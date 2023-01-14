@@ -151,6 +151,19 @@ pub struct Disease {
     pub eradicated: bool,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Hash, PartialEq, Eq)]
+pub enum PlayerAction {
+    Drive(String),
+    DirectFlight(String),
+    CharterFlight(String),
+    ShuttleFlight(String),
+    BuildResearchCenter,
+    TreatDisease(usize),
+    GiveCard,
+    ReceiveCard,
+    DiscoverCure(Color),
+}
+
 impl Disease {
     pub fn new(color: Color) -> Self {
         Disease {
@@ -288,9 +301,10 @@ impl Game {
         for severity in [3, 2, 1] {
             for _ in 0..3 {
                 let city_name = self.infection_card_pile.pop_front().expect("Tried to infect initial cities but there aren't enough infection cards in the deck");
-                self.world.entry(city_name).and_modify(|city| {
+                self.world.entry(city_name.clone()).and_modify(|city| {
                     *city.infections.entry(city.color).or_insert(0) += severity;
                 });
+                self.infection_discard_pile.push_back(city_name);
             }
         }
     }
@@ -302,6 +316,40 @@ impl Game {
         self.create_infection_cards();
         self.infect_initial_cities();
     }
+
+    pub fn possible_actions(&self, p: &Player) -> Vec<PlayerAction> {
+        let mut actions = Vec::new();
+        let city = self.world.get(&p.location).unwrap();
+
+        for dest in &city.neighbors {
+            actions.push(PlayerAction::Drive(dest.clone()));
+        }
+
+        for card in &p.hand {
+            if let PlayerCard::CityCard(name) = card {
+                if name != &p.location {
+                    actions.push(PlayerAction::DirectFlight(name.clone()));
+                } else {
+                    for dest in self.world.keys() {
+                        if dest != name {
+                            actions.push(PlayerAction::CharterFlight(dest.clone()));
+                        }
+                    }
+                }
+            }
+        }
+
+        if city.has_research_center {
+            for dest in self.world.values() {
+                if dest.name != city.name && dest.has_research_center {
+                    actions.push(PlayerAction::ShuttleFlight(dest.name.clone()));
+                }
+            }
+        }
+
+        actions
+    }
+
     pub fn run(&mut self) {}
 }
 

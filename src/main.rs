@@ -5,6 +5,7 @@ use pandemic;
 fn main() {
     let mut game =
         pandemic::Game::from_file("cities.json").expect("Could not create game from cities.json");
+
     game.add_player(pandemic::Player::medic("Atlanta"))
         .expect("Could not create medic in Atlanta");
     game.add_player(pandemic::Player::scientist("Atlanta"))
@@ -19,11 +20,29 @@ fn main() {
         game.infection_card_pile.len(),
         game.infection_discard_pile.len()
     );
+    println!("Outbreaks: {}", game.outbreaks);
+    println!(
+        "Infection rate: {} (level={})",
+        game.infection_rate(),
+        game.infection_level
+    );
 
     for city in game.world.values() {
         println!("{}", city);
     }
     println!();
+
+    let actions = game.possible_actions(&game.players[0]);
+
+    println!(
+        "{:#?} can perform one of {} actions:",
+        &game.players[0],
+        actions.len()
+    );
+
+    for action in actions {
+        println!("{:?}", action);
+    }
 
     game.run();
 }
