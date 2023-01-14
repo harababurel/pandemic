@@ -3,15 +3,16 @@
 #![allow(unused_variables)]
 #![allow(unused_mut)]
 
+use colored::Colorize;
 use rand::prelude::*;
 use serde::{Deserialize, Deserializer, Serialize};
-// use serde_json::Result;
-use colored::*;
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use thiserror::Error;
 
 const INFECTION_RATES: [i32; 7] = [2, 2, 2, 3, 3, 4, 4];
+const MIN_PLAYERS: usize = 2;
+const MAX_PLAYERS: usize = 4;
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right
@@ -28,7 +29,7 @@ mod tests {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Hash, PartialEq, Eq, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Hash, PartialEq, Eq, Default, Copy)]
 pub enum Color {
     #[default]
     Blue,
@@ -58,9 +59,28 @@ pub struct City {
     infections: HashMap<Color, u32>,
 }
 
+impl City {
+    pub fn is_infected(&self) -> bool {
+        self.infections.values().any(|x| x > &0)
+    }
+}
+
 impl std::fmt::Display for City {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.name.color(self.color.clone()))
+        write!(f, "{}", self.name.color(self.color.clone()))?;
+
+        if self.is_infected() {
+            write!(f, " (")?;
+        }
+        for (clr, qty) in &self.infections {
+            for _ in 0..*qty {
+                write!(f, "{}", "*".color(*clr))?;
+            }
+        }
+        if self.is_infected() {
+            write!(f, ")")?;
+        }
+        std::fmt::Result::Ok(())
     }
 }
 
@@ -112,10 +132,12 @@ impl Player {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Game {
     pub world: HashMap<String, City>,
     pub player_cards: VecDeque<PlayerCard>,
+    pub infection_card_pile: VecDeque<String>,
+    pub infection_discard_pile: VecDeque<String>,
     pub players: Vec<Player>,
     pub infection_level: usize,
     pub outbreaks: usize,
@@ -140,8 +162,8 @@ impl Disease {
 }
 
 impl Game {
-    pub fn new() -> Self {
-        Game {
+    pub fn from_file(cities_file: &str) -> Result<Self, PandemicError> {
+        let mut game = Game {
             world: HashMap::new(),
             player_cards: VecDeque::new(),
             players: Vec::new(),
@@ -153,7 +175,10 @@ impl Game {
                 Disease::new(Color::Yellow),
                 Disease::new(Color::Black),
             ],
-        }
+            ..Default::default()
+        };
+        game.load_cities(cities_file)?;
+        Ok(game)
     }
 
     pub fn infection_rate(&self) -> i32 {
@@ -161,6 +186,10 @@ impl Game {
     }
 
     pub fn add_player(&mut self, p: Player) -> Result<(), PandemicError> {
+        if self.players.len() == MAX_PLAYERS {
+            return Err(PandemicError::TooManyPlayers);
+        }
+
         if self.players.iter().any(|x| x.class == p.class) {
             return Err(PandemicError::PlayerClassConflict);
         }
@@ -172,7 +201,7 @@ impl Game {
         Ok(())
     }
 
-    pub fn load_cities(&mut self, path: &str) -> Result<(), PandemicError> {
+    fn load_cities(&mut self, path: &str) -> Result<(), PandemicError> {
         let contents = fs::read_to_string(path)?;
 
         let cities: Vec<City> = serde_json::from_str(&contents)?;
@@ -209,11 +238,17 @@ impl Game {
         Ok(())
     }
 
-    pub fn create_player_cards(&mut self) {
+    fn create_player_cards(&mut self) {
         for city_name in self.world.keys() {
             let card = PlayerCard::CityCard(city_name.clone());
             self.player_cards.push_back(card);
         }
+        self.player_cards
+            .make_contiguous()
+            .shuffle(&mut rand::thread_rng());
+    }
+
+    fn add_epidemic_cards(&mut self) {
         for _ in 0..5 {
             self.player_cards.push_back(PlayerCard::EpidemicCard);
         }
@@ -221,6 +256,53 @@ impl Game {
             .make_contiguous()
             .shuffle(&mut rand::thread_rng());
     }
+
+    fn create_infection_cards(&mut self) {
+        for city_name in self.world.keys() {
+            self.infection_card_pile.push_back(city_name.clone());
+        }
+        self.infection_card_pile
+            .make_contiguous()
+            .shuffle(&mut thread_rng());
+    }
+
+    fn deal_player_cards(&mut self) {
+        let cards_per_player = match self.players.len() {
+            2 => 4,
+            3 => 3,
+            4 => 2,
+            _ => panic!("Invalid number of players, don't know how many cards to deal"),
+        };
+
+        for p in &mut self.players {
+            for _ in 0..cards_per_player {
+                let card = self.player_cards.pop_front().expect(
+                    "Tried to deal initial cards but there aren't enough in the player card deck",
+                );
+                p.hand.push(card);
+            }
+        }
+    }
+
+    pub fn infect_initial_cities(&mut self) {
+        for severity in [3, 2, 1] {
+            for _ in 0..3 {
+                let city_name = self.infection_card_pile.pop_front().expect("Tried to infect initial cities but there aren't enough infection cards in the deck");
+                self.world.entry(city_name).and_modify(|city| {
+                    *city.infections.entry(city.color).or_insert(0) += severity;
+                });
+            }
+        }
+    }
+
+    pub fn setup(&mut self) {
+        self.create_player_cards();
+        self.deal_player_cards();
+        self.add_epidemic_cards();
+        self.create_infection_cards();
+        self.infect_initial_cities();
+    }
+    pub fn run(&mut self) {}
 }
 
 #[derive(Error, Debug)]
@@ -235,4 +317,6 @@ pub enum PandemicError {
     PlayerClassConflict,
     #[error("invalid player location")]
     InvalidPlayerlocation,
+    #[error("too many players")]
+    TooManyPlayers,
 }
