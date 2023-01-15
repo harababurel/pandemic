@@ -10,6 +10,15 @@ use std::collections::{HashMap, VecDeque};
 use std::fs;
 use thiserror::Error;
 
+pub mod city;
+pub mod color;
+pub mod disease;
+pub mod player;
+pub use crate::city::City;
+pub use crate::color::Color;
+pub use crate::disease::Disease;
+pub use crate::player::*;
+
 const INFECTION_RATES: [i32; 7] = [2, 2, 2, 3, 3, 4, 4];
 const MIN_PLAYERS: usize = 2;
 const MAX_PLAYERS: usize = 4;
@@ -29,109 +38,6 @@ mod tests {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Hash, PartialEq, Eq, Default, Copy)]
-pub enum Color {
-    #[default]
-    Blue,
-    Yellow,
-    Red,
-    Black,
-}
-
-impl Into<colored::Color> for Color {
-    fn into(self) -> colored::Color {
-        match self {
-            Color::Blue => colored::Color::Blue,
-            Color::Red => colored::Color::Red,
-            Color::Yellow => colored::Color::Yellow,
-            Color::Black => colored::Color::BrightBlack,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct City {
-    name: String,
-    color: Color,
-    neighbors: Vec<String>,
-    has_research_center: bool,
-    #[serde(default = "HashMap::new")]
-    infections: HashMap<Color, u32>,
-}
-
-impl City {
-    pub fn is_infected(&self) -> bool {
-        self.infections.values().any(|x| x > &0)
-    }
-}
-
-impl std::fmt::Display for City {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.name.color(self.color.clone()))?;
-
-        if self.is_infected() {
-            write!(f, " (")?;
-        }
-        for (clr, qty) in &self.infections {
-            for _ in 0..*qty {
-                write!(f, "{}", "*".color(*clr))?;
-            }
-        }
-        if self.is_infected() {
-            write!(f, ")")?;
-        }
-        std::fmt::Result::Ok(())
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum PlayerCard {
-    CityCard(String),
-    EpidemicCard,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub enum PlayerClass {
-    Dispatcher,
-    Generalist,
-    Medic,
-    Scientist,
-    Researcher,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Player {
-    class: PlayerClass,
-    location: String,
-    hand: Vec<PlayerCard>,
-}
-
-impl Player {
-    pub fn new(class: PlayerClass, location: &str) -> Self {
-        Player {
-            class: class,
-            location: location.to_string(),
-            hand: Vec::new(),
-        }
-    }
-
-    pub fn dispatcher(location: &str) -> Self {
-        Self::new(PlayerClass::Dispatcher, location)
-    }
-    pub fn generalist(location: &str) -> Self {
-        Self::new(PlayerClass::Generalist, location)
-    }
-    pub fn medic(location: &str) -> Self {
-        Self::new(PlayerClass::Medic, location)
-    }
-    pub fn scientist(location: &str) -> Self {
-        Self::new(PlayerClass::Scientist, location)
-    }
-    pub fn researcher(location: &str) -> Self {
-        Self::new(PlayerClass::Researcher, location)
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Game {
     pub world: HashMap<String, City>,
@@ -142,36 +48,6 @@ pub struct Game {
     pub infection_level: usize,
     pub outbreaks: usize,
     pub diseases: Vec<Disease>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Hash, PartialEq, Eq)]
-pub struct Disease {
-    pub color: Color,
-    pub cured: bool,
-    pub eradicated: bool,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Hash, PartialEq, Eq)]
-pub enum PlayerAction {
-    Drive(String),
-    DirectFlight(String),
-    CharterFlight(String),
-    ShuttleFlight(String),
-    BuildResearchCenter,
-    TreatDisease(usize),
-    GiveCard,
-    ReceiveCard,
-    DiscoverCure(Color),
-}
-
-impl Disease {
-    pub fn new(color: Color) -> Self {
-        Disease {
-            color,
-            cured: false,
-            eradicated: false,
-        }
-    }
 }
 
 impl Game {
@@ -321,10 +197,12 @@ impl Game {
         let mut actions = Vec::new();
         let city = self.world.get(&p.location).unwrap();
 
+        // Drive
         for dest in &city.neighbors {
             actions.push(PlayerAction::Drive(dest.clone()));
         }
 
+        // DirectFlight / CharterFlight
         for card in &p.hand {
             if let PlayerCard::CityCard(name) = card {
                 if name != &p.location {
@@ -339,10 +217,68 @@ impl Game {
             }
         }
 
+        // ShuttleFlight
         if city.has_research_center {
             for dest in self.world.values() {
                 if dest.name != city.name && dest.has_research_center {
                     actions.push(PlayerAction::ShuttleFlight(dest.name.clone()));
+                }
+            }
+        }
+
+        // BuildResearchCenter
+        if !city.has_research_center
+            && p.location == city.name
+            && p.hand
+                .iter()
+                .any(|card| *card == PlayerCard::CityCard(city.name.clone()))
+        {
+            actions.push(PlayerAction::BuildResearchCenter);
+        }
+
+        // TreatDisease
+        city.infections
+            .iter()
+            .filter(|(clr, qty)| qty > &&0)
+            .for_each(|(clr, qty)| {
+                actions.push(PlayerAction::TreatDisease(*clr));
+            });
+
+        // DiscoverCure
+        for disease in &self.diseases {
+            if !disease.cured {
+                let mut cnt = 0;
+                for card in &p.hand {
+                    if let PlayerCard::CityCard(name) = card {
+                        let color = self.world.get(name).unwrap().color;
+                        if color == disease.color {
+                            cnt += 1;
+                        }
+                    }
+                }
+                if cnt >= p.cards_needed_for_cure() {
+                    actions.push(PlayerAction::DiscoverCure(disease.color));
+                }
+            }
+        }
+
+        // GiveCard / ReceiveCard
+        for q in &self.players {
+            if p == q || p.location != q.location {
+                continue;
+            }
+            for card in &p.hand {
+                if let PlayerCard::CityCard(name) = card {
+                    if name == &p.location || p.can_give_any_card() {
+                        actions.push(PlayerAction::GiveCard(card.clone(), q.clone()));
+                    }
+                }
+            }
+            for card in &q.hand {
+                if let PlayerCard::CityCard(name) = card {
+                    if name == &q.location || q.can_give_any_card() {
+                        actions.push(PlayerAction::ReceiveCard(card.clone(), q.clone()));
+                    }
                 }
             }
         }
