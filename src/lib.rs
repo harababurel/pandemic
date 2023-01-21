@@ -14,6 +14,7 @@ pub mod city;
 pub mod color;
 pub mod disease;
 pub mod player;
+pub mod util;
 pub use crate::city::City;
 pub use crate::color::Color;
 pub use crate::disease::Disease;
