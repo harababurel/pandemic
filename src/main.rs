@@ -20,10 +20,6 @@ struct Cli {
     lat: f64,
 }
 
-pub mod vector_tile {
-    include!(concat!(env!("OUT_DIR"), "/vector_tile.rs"));
-}
-
 fn main() {
     let args = Cli::parse();
 
@@ -87,7 +83,7 @@ fn main() {
     let buf = res.bytes().unwrap();
     println!("Raw size: {}", buf.len());
 
-    let x = vector_tile::Tile::decode(&mut std::io::Cursor::new(buf.clone())).unwrap();
+    let x = pandemic::vector_tile::Tile::decode(&mut std::io::Cursor::new(buf.clone())).unwrap();
 
     println!("Decoded x = {:#?}", &x);
     println!("Raw size: {}", buf.len());

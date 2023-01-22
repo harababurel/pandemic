@@ -14,12 +14,17 @@ pub mod city;
 pub mod color;
 pub mod disease;
 pub mod player;
-pub mod util;
 pub mod renderer;
+pub mod tilesource;
+pub mod util;
 pub use crate::city::City;
 pub use crate::color::Color;
 pub use crate::disease::Disease;
 pub use crate::player::*;
+
+pub mod vector_tile {
+    include!(concat!(env!("OUT_DIR"), "/vector_tile.rs"));
+}
 
 const INFECTION_RATES: [i32; 7] = [2, 2, 2, 3, 3, 4, 4];
 const MIN_PLAYERS: usize = 2;
