@@ -71,7 +71,7 @@ fn main() {
     // endwin();
 
     let center = pandemic::util::Coords::from_deg(args.lon, args.lat);
-    let zoom = 8.;
+    let zoom = 0.;
 
     let t = pandemic::util::coords_to_tile(&center, zoom);
     let (x, y) = (t.x, t.y);
@@ -93,5 +93,8 @@ fn main() {
         "Visible tiles: {:?}",
         renderer.visible_tiles(&center, zoom).len()
     );
+
+    renderer.draw(&center, zoom);
+
     game.run();
 }
