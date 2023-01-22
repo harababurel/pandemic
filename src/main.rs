@@ -77,7 +77,8 @@ fn main() {
     let center = pandemic::util::Coords::from_deg(args.lon, args.lat);
     let zoom = 8.;
 
-    let (x, y) = pandemic::util::coords_to_tile(&center, zoom);
+    let t = pandemic::util::coords_to_tile(&center, zoom);
+    let (x, y) = (t.x, t.y);
     println!("Initial tile: z={zoom}, x={x}, y={y}");
 
     let res =
@@ -91,5 +92,10 @@ fn main() {
     println!("Decoded x = {:#?}", &x);
     println!("Raw size: {}", buf.len());
 
+    let renderer = pandemic::renderer::Renderer::new();
+    println!(
+        "Visible tiles: {:?}",
+        renderer.visible_tiles(&center, zoom).len()
+    );
     game.run();
 }
