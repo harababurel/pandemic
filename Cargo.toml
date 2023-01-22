@@ -17,10 +17,7 @@ pancurses = "0.17.0"
 # miniquad = "0.3.15"
 # macroquad = "0.3"
 # bevy = "0.9"
-osmpbf = "0.2"
-protobuf = { version = "3.2", features = ["with-bytes"] }
 prost = "0.11"
-osmpbfreader = "0.15.2"
 
 
 # Enable max optimizations for dependencies, but not for our code:

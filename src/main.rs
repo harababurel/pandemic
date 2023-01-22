@@ -2,8 +2,6 @@
 #![allow(unused_variables)]
 
 use clap::Parser;
-use osmpbf::{Element, ElementReader};
-use osmpbfreader;
 use pancurses;
 use pandemic;
 use prost::Message;
@@ -16,13 +14,12 @@ use std::io::prelude::*;
 struct Cli {
     #[clap(long, default_value_t = String::from("http://harababurel.com:8080"))]
     tileserver: String,
+    #[clap(long, default_value_t = 8.55)]
+    lon: f64,
+    #[clap(long, default_value_t = 47.3667)]
+    lat: f64,
 }
 
-pub mod OSMPBF {
-    pub mod fileformat {
-        include!(concat!(env!("OUT_DIR"), "/osmpbf.rs"));
-    }
-}
 pub mod vector_tile {
     include!(concat!(env!("OUT_DIR"), "/vector_tile.rs"));
 }
@@ -77,7 +74,7 @@ fn main() {
     // window.getch();
     // endwin();
 
-    let center = pandemic::util::Coords::from_deg(8.55, 47.3667);
+    let center = pandemic::util::Coords::from_deg(args.lon, args.lat);
     let zoom = 8.;
 
     let (x, y) = pandemic::util::coords_to_tile(&center, zoom);
