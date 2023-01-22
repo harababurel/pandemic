@@ -76,18 +76,15 @@ fn main() {
     // window.refresh();
     // window.getch();
     // endwin();
-    //
-    let lat_deg = 47.36667;
-    let lon_deg = 8.55;
+
+    let center = pandemic::util::Coords::from_deg(8.55, 47.3667);
     let zoom = 8.;
 
-    let (x, y) = pandemic::util::coords_to_tile(lon_deg, lat_deg, zoom);
+    let (x, y) = pandemic::util::coords_to_tile(&center, zoom);
     println!("Initial tile: z={zoom}, x={x}, y={y}");
 
     let res =
         reqwest::blocking::get(format!("{}/data/v3/{zoom}/{x}/{y}.pbf", args.tileserver)).unwrap();
-
-    // pub fn deserialize_shirt(buf: &[u8]) -> Result<items::Shirt, prost::DecodeError> {
 
     let buf = res.bytes().unwrap();
     println!("Raw size: {}", buf.len());
@@ -96,38 +93,6 @@ fn main() {
 
     println!("Decoded x = {:#?}", &x);
     println!("Raw size: {}", buf.len());
-    // println!("Decoded x.zlib_data = {:?}", &x.zlib_data().len());
-    // println!("Decoded x.lzma_data = {:?}", &x.lzma_data().len());
-    // println!(
-    //     "Decoded x.OBSOLETE_bzip2_data = {:?}",
-    //     &x.obsolete_bzip2_data().len()
-    // );
-    // OSMPBF::fileformat::decode
-
-    // println!("text: {:?}", res.text().unwrap());
-    // println!("res: {:#?}", &res);
-    // println!("bytes: {:#?}", &res.bytes());
-
-    // let mut f = std::fs::File::create("/tmp/file-modified.txt").unwrap();
-    // f.write(&res.bytes().unwrap());
-
-    // let reader = ElementReader::new(res);
-    // reader
-    //     .for_each(|element| {
-    //         println!("Found element: {:?}", element);
-    //         // if let Element::Way(_) = element {
-    //         //     ways += 1;
-    //         // }
-    //     })
-    //     .expect("reader error");
-    //
-    // let mut pbf = osmpbfreader::OsmPbfReader::new(res);
-    // let mut nb = 0;
-    // for obj in pbf.iter() {
-    //     println!("object: {:?}", obj);
-    //     nb += 1;
-    // }
-    // println!("{} objects", nb);
 
     game.run();
 }
