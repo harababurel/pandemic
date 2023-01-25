@@ -2,6 +2,7 @@ use crate::tilesource::{TileServerSource, TileSource};
 use crate::util;
 use crate::util::{Coords, Tile};
 use crate::vector_tile;
+use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
 
 pub struct Renderer<TS: TileSource> {
@@ -38,19 +39,32 @@ impl Renderer<TileServerSource> {
     pub fn get_tile_features(&self, tile: &util::Tile, zoom: f64) {
         let draw_order = Renderer::generate_draw_order(zoom);
 
+        println!("draw order is {:?}", draw_order);
+
         let vtile = tile.vtile.as_ref().unwrap();
 
-        draw_order.iter().for_each(|layer_id| {
-            if let Some(layer) = vtile.layers.iter().find(|l| &l.name == layer_id) {
-                let scale = layer.extent() as f64 / util::tile_size_at_zoom(zoom);
-
-                println!("layer: {:#?}", layer);
-
-                // layer.
-            }
-
-            // tile.
+        vtile.layers.iter().for_each(|l| {
+            println!(
+                "layer: {} ({} features, {} keys, {} values)",
+                l.name,
+                l.features.len(),
+                l.keys.len(),
+                l.values.len()
+            );
+            // println!("\tkeys: {:?}", l.keys);
         });
+
+        // draw_order.iter().for_each(|layer_id| {
+        //     if let Some(layer) = vtile.layers.iter().find(|l| &l.name == layer_id) {
+        //         let scale = layer.extent() as f64 / util::tile_size_at_zoom(zoom);
+
+        //         println!("layer: {:#?}", layer.name);
+
+        //         // layer.
+        //     }
+
+        //     // tile.
+        // });
     }
     // _getTileFeatures(tile, zoom) {
     //     const position = tile.position;
@@ -141,7 +155,7 @@ impl Renderer<TileServerSource> {
         let center = util::coords_to_tile(center, z as f64);
         let tile_size = util::tile_size_at_zoom(zoom);
 
-        let mut tiles: Vec<Tile> = Vec::new();
+        let mut tiles: HashMap<(i32, i32, usize), Tile> = HashMap::new();
 
         for dy in [-1, 0, 1] {
             for dx in [-1, 0, 1] {
@@ -167,15 +181,18 @@ impl Renderer<TileServerSource> {
                     continue;
                 }
 
-                tiles.push(Tile {
-                    xyz: (tx, ty, z),
-                    zoom,
-                    position: (pos_x, pos_y),
-                    size: tile_size,
-                    vtile: None,
-                });
+                tiles.insert(
+                    (tx, ty, z),
+                    Tile {
+                        xyz: (tx, ty, z),
+                        zoom,
+                        position: (pos_x, pos_y),
+                        size: tile_size,
+                        vtile: None,
+                    },
+                );
             }
         }
-        tiles
+        tiles.into_values().collect()
     }
 }
