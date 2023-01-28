@@ -15,6 +15,7 @@ pub mod color;
 pub mod disease;
 pub mod player;
 pub mod renderer;
+pub mod tile;
 pub mod tilesource;
 pub mod util;
 pub use crate::city::City;

@@ -1,6 +1,7 @@
+use crate::tile;
 use crate::tilesource::{TileServerSource, TileSource};
 use crate::util;
-use crate::util::{Coords, Tile};
+use crate::util::Coords;
 use crate::vector_tile;
 use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
@@ -36,7 +37,7 @@ impl Renderer<TileServerSource> {
         }
     }
 
-    pub fn get_tile_features(&self, tile: &util::Tile, zoom: f64) {
+    pub fn get_tile_features(&self, tile: &tile::Tile, zoom: f64) {
         let draw_order = Renderer::generate_draw_order(zoom);
 
         println!("draw order is {:?}", draw_order);
@@ -45,14 +46,17 @@ impl Renderer<TileServerSource> {
 
         vtile.layers.iter().for_each(|l| {
             println!(
-                "layer: {} ({} features, {} keys, {} values)",
+                "layer: {} (version={}, {} features, {} keys, {} values)",
                 l.name,
+                l.version,
                 l.features.len(),
                 l.keys.len(),
                 l.values.len()
             );
             // println!("\tkeys: {:?}", l.keys);
         });
+
+        tile.process();
 
         // draw_order.iter().for_each(|layer_id| {
         //     if let Some(layer) = vtile.layers.iter().find(|l| &l.name == layer_id) {
@@ -149,13 +153,13 @@ impl Renderer<TileServerSource> {
     //     }
     // }
 
-    pub fn visible_tiles(&self, center: &Coords, zoom: f64) -> Vec<Tile> {
+    pub fn visible_tiles(&self, center: &Coords, zoom: f64) -> Vec<tile::Tile> {
         let z = util::base_zoom(zoom);
 
         let center = util::coords_to_tile(center, z as f64);
         let tile_size = util::tile_size_at_zoom(zoom);
 
-        let mut tiles: HashMap<(i32, i32, usize), Tile> = HashMap::new();
+        let mut tiles: HashMap<(i32, i32, usize), tile::Tile> = HashMap::new();
 
         for dy in [-1, 0, 1] {
             for dx in [-1, 0, 1] {
@@ -183,7 +187,7 @@ impl Renderer<TileServerSource> {
 
                 tiles.insert(
                     (tx, ty, z),
-                    Tile {
+                    tile::Tile {
                         xyz: (tx, ty, z),
                         zoom,
                         position: (pos_x, pos_y),

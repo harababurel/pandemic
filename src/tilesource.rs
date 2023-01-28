@@ -1,10 +1,11 @@
+use crate::tile;
 use crate::util;
 use crate::vector_tile;
 use prost::Message;
 use thiserror::Error;
 
 pub trait TileSource {
-    fn get_tile(&self, z: usize, x: i32, y: i32) -> Result<util::Tile, TileSourceError>;
+    fn get_tile(&self, z: usize, x: i32, y: i32) -> Result<tile::Tile, TileSourceError>;
 }
 
 pub struct TileServerSource {
@@ -22,21 +23,21 @@ impl TileServerSource {
 }
 
 impl TileSource for TileServerSource {
-    fn get_tile(&self, z: usize, x: i32, y: i32) -> Result<util::Tile, TileSourceError> {
+    fn get_tile(&self, z: usize, x: i32, y: i32) -> Result<tile::Tile, TileSourceError> {
         let endpoint = format!("{}/data/v3/{z}/{x}/{y}.pbf", self.tileserver);
         println!("Fetching tile from {}", endpoint);
         let res = reqwest::blocking::get(endpoint)?;
         let buf = res.bytes()?;
         let vtile = vector_tile::Tile::decode(&mut std::io::Cursor::new(buf.clone()))?;
 
-        let tile = util::Tile::from_proto(x, y, z, vtile);
+        let tile = tile::Tile::from_proto(x, y, z, vtile);
 
         Ok(tile)
     }
 }
 impl TileSource for DummyTileSource {
-    fn get_tile(&self, z: usize, x: i32, y: i32) -> Result<util::Tile, TileSourceError> {
-        Ok(util::Tile::from_proto(
+    fn get_tile(&self, z: usize, x: i32, y: i32) -> Result<tile::Tile, TileSourceError> {
+        Ok(tile::Tile::from_proto(
             x,
             y,
             z,

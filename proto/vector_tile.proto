@@ -1,5 +1,9 @@
 package vector_tile;
 option optimize_for = LITE_RUNTIME;
+
+
+// Spec: https://github.com/mapbox/vector-tile-spec/tree/master/2.0
+
 message Tile {
   // GeomType is described in section 4.3.4 of the specification
   enum GeomType {

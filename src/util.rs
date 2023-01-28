@@ -15,27 +15,6 @@ pub struct TileCoords {
     pub y: f64,
 }
 
-#[derive(Debug)]
-pub struct Tile {
-    pub xyz: (i32, i32, usize),
-    pub zoom: f64,
-    pub position: (f64, f64),
-    pub size: f64,
-    pub vtile: Option<vector_tile::Tile>,
-}
-
-impl Tile {
-    pub fn from_proto(x: i32, y: i32, z: usize, vtile: vector_tile::Tile) -> Self {
-        Tile {
-            xyz: (x, y, z),
-            position: (0., 0.),
-            size: 0.,
-            zoom: 0.,
-            vtile: Some(vtile),
-        }
-    }
-}
-
 impl Coords {
     pub fn from_deg(lon: f64, lat: f64) -> Self {
         Coords { lon, lat }
