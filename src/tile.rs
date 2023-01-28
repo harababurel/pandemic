@@ -1,5 +1,4 @@
 use crate::vector_tile::{self, tile::GeomType};
-use image::{GenericImage, GenericImageView, ImageBuffer, Rgb, RgbImage};
 
 #[derive(Debug)]
 pub struct Tile {
@@ -10,7 +9,7 @@ pub struct Tile {
     pub vtile: Option<vector_tile::Tile>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum GeometryCommand {
     MoveTo(i32, i32), // (dx, dy)
     LineTo(i32, i32), // (dx, dy)
@@ -40,13 +39,13 @@ impl Tile {
 
             for _ in 0..count {
                 if c_id == 1 {
-                    let dx = (geometry[i] as i32 >> 1) ^ (-(geometry[i] as i32 & 1));
-                    let dy = (geometry[i + 1] as i32 >> 1) ^ (-(geometry[i + 1] as i32 & 1));
+                    let dx = Tile::decode_parameter_integer(geometry[i]);
+                    let dy = Tile::decode_parameter_integer(geometry[i + 1]);
                     ret.push(GeometryCommand::MoveTo(dx, dy));
                     i += 2;
                 } else if c_id == 2 {
-                    let dx = (geometry[i] as i32 >> 1) ^ (-(geometry[i] as i32 & 1));
-                    let dy = (geometry[i + 1] as i32 >> 1) ^ (-(geometry[i + 1] as i32 & 1));
+                    let dx = Tile::decode_parameter_integer(geometry[i]);
+                    let dy = Tile::decode_parameter_integer(geometry[i + 1]);
                     ret.push(GeometryCommand::LineTo(dx, dy));
                     i += 2;
                 } else if c_id == 7 {
@@ -57,59 +56,44 @@ impl Tile {
         ret
     }
 
-    pub fn process(&self) {
-        if let Some(vtile) = self.vtile.as_ref() {
-            let mut img: RgbImage = ImageBuffer::new(10000, 10000);
-
-            for (x, y, pixel) in img.enumerate_pixels_mut() {
-                let r = (0.1 * x as f32) as u8;
-                let b = (0.1 * y as f32) as u8;
-                *pixel = image::Rgb([r, 0, b]);
-            }
-
-            for layer in &vtile.layers {
-                for feature in &layer.features {
-                    let mut cursor = (0, 0);
-
-                    let commands = Tile::parse_geometry(&feature.geometry);
-                    println!("Commands: {:?}", commands);
-
-                    match feature.r#type() {
-                        GeomType::Unknown => {
-                            panic!("Found unknown geometry, don't know how to interpret this");
-                        }
-                        GeomType::Point => {
-                            for c in commands {
-                                match c {
-                                    GeometryCommand::MoveTo(dx, dy) => {
-                                        cursor = (cursor.0 + dx, cursor.1 + dy);
-
-                                        if 0 <= cursor.0 && 0 <= cursor.1 {
-                                            img.put_pixel(
-                                                cursor.0 as u32,
-                                                cursor.1 as u32,
-                                                Rgb([255, 255, 255]),
-                                            );
-                                        }
-                                    }
-                                    _ => {
-                                        panic!("Point geometry can only contain MoveTo commands");
-                                    }
-                                };
-                            }
-                        }
-                        GeomType::Linestring => {}
-                        GeomType::Polygon => {}
-                    }
-                }
-            }
-            img.save("test.png").unwrap();
-        }
-    }
-
     pub fn parse_command_integer(ci: u32) -> (u32, u32) {
         let c_id = ci & 0x7;
         let count = ci >> 3;
         (c_id, count)
+    }
+    pub fn decode_parameter_integer(pi: u32) -> i32 {
+        (pi as i32 >> 1) ^ (-(pi as i32 & 1))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_command_integer() {
+        let tests = vec![
+            (9, (1, 1)),
+            (961, (1, 120)),
+            (10, (2, 1)),
+            (26, (2, 3)),
+            (15, (7, 1)),
+        ];
+        for t in tests {
+            let (ci, expected) = t;
+            assert_eq!(Tile::parse_command_integer(ci), expected);
+        }
+    }
+
+    #[test]
+    fn test_parse_geometry() {
+        let geometry: Vec<u32> = vec![9, 6, 12, 18, 10, 12, 24, 44, 15];
+        let expected_commands = vec![
+            GeometryCommand::MoveTo(3, 6),
+            GeometryCommand::LineTo(5, 6),
+            GeometryCommand::LineTo(12, 22),
+            GeometryCommand::ClosePath,
+        ];
+        assert_eq!(Tile::parse_geometry(&geometry), expected_commands);
     }
 }

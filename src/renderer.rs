@@ -3,6 +3,7 @@ use crate::tilesource::{TileServerSource, TileSource};
 use crate::util;
 use crate::util::Coords;
 use crate::vector_tile;
+use image::{GenericImage, GenericImageView, ImageBuffer, Rgb, RgbImage};
 use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
 
@@ -22,7 +23,7 @@ impl Renderer<TileServerSource> {
     }
 
     pub fn draw(&self, center: &util::Coords, zoom: f64) {
-        let mut tiles = self.visible_tiles(center, zoom);
+        let mut tiles: Vec<tile::Tile> = self.visible_tiles(center, zoom);
 
         tiles.iter_mut().for_each(|ref mut t| {
             t.vtile = self
@@ -32,14 +33,102 @@ impl Renderer<TileServerSource> {
                 .vtile;
         });
 
+        let mut img: RgbImage = ImageBuffer::new(1920, 1280);
+        for (x, y, pixel) in img.enumerate_pixels_mut() {
+            let r = (100.0 + 0.2 * x as f32) as u8;
+            let b = (100.0 + 0.2 * y as f32) as u8;
+            *pixel = image::Rgb([r, 0, b]);
+        }
         for t in &tiles {
-            self.get_tile_features(&t, zoom);
+            self.draw_tile(&mut img, &t, zoom);
+        }
+        img.save("test.png").unwrap();
+    }
+    pub fn draw_tile(&self, img: &mut RgbImage, t: &tile::Tile, zoom: f64) {
+        if let Some(vtile) = t.vtile.as_ref() {
+            for layer in &vtile.layers {
+                let extent = layer.extent();
+
+                println!("layer extent is {}", extent);
+
+                for feature in &layer.features {
+                    let mut cursor = (0, 0);
+                    let commands = tile::Tile::parse_geometry(&feature.geometry);
+                    println!("Commands: {:?}", commands);
+
+                    match feature.r#type() {
+                        vector_tile::tile::GeomType::Unknown => {
+                            panic!("Found unknown geometry, don't know how to interpret this");
+                        }
+                        vector_tile::tile::GeomType::Point => {
+                            for c in commands {
+                                match c {
+                                    tile::GeometryCommand::MoveTo(dx, dy) => {
+                                        let ncursor = (cursor.0 + dx, cursor.1 + dy);
+
+                                        if 0 <= ncursor.0 && 0 <= ncursor.1 {
+                                            img.put_pixel(
+                                                cursor.0 as u32,
+                                                cursor.1 as u32,
+                                                Rgb([255, 255, 255]),
+                                            );
+                                        }
+                                        cursor = ncursor;
+                                    }
+                                    _ => {
+                                        panic!("Point geometry can only contain MoveTo commands");
+                                    }
+                                };
+                            }
+                        }
+                        vector_tile::tile::GeomType::Linestring => {
+                            let scale = 0.2;
+
+                            let tdx = t.xyz.0 as f32;
+                            let tdy = t.xyz.1 as f32;
+
+                            for c in commands {
+                                match c {
+                                    tile::GeometryCommand::MoveTo(dx, dy) => {
+                                        cursor = (cursor.0 + dx, cursor.1 + dy);
+                                    }
+                                    tile::GeometryCommand::LineTo(dx, dy) => {
+                                        let ncursor = (cursor.0 + dx, cursor.1 + dy);
+                                        if 0 <= ncursor.0 && 0 <= ncursor.1 {
+                                            imageproc::drawing::draw_line_segment_mut(
+                                                img,
+                                                (
+                                                    cursor.0 as f32 * scale
+                                                        + tdx * extent as f32 * scale,
+                                                    cursor.1 as f32 * scale
+                                                        + tdy * extent as f32 * scale,
+                                                ), // start point
+                                                (
+                                                    ncursor.0 as f32 * scale
+                                                        + tdx * extent as f32 * scale,
+                                                    ncursor.1 as f32 * scale
+                                                        + tdy * extent as f32 * scale,
+                                                ), // end point
+                                                Rgb([0u8, 0u8, 0u8]), // RGB colors
+                                            );
+                                        }
+                                        cursor = ncursor;
+                                    }
+                                    _ => {
+                                        panic!("LineString geometry can only contain MoveTo or LineTo commands");
+                                    }
+                                }
+                            }
+                        }
+                        vector_tile::tile::GeomType::Polygon => {}
+                    }
+                }
+            }
         }
     }
 
     pub fn get_tile_features(&self, tile: &tile::Tile, zoom: f64) {
         let draw_order = Renderer::generate_draw_order(zoom);
-
         println!("draw order is {:?}", draw_order);
 
         let vtile = tile.vtile.as_ref().unwrap();
@@ -55,45 +144,7 @@ impl Renderer<TileServerSource> {
             );
             // println!("\tkeys: {:?}", l.keys);
         });
-
-        tile.process();
-
-        // draw_order.iter().for_each(|layer_id| {
-        //     if let Some(layer) = vtile.layers.iter().find(|l| &l.name == layer_id) {
-        //         let scale = layer.extent() as f64 / util::tile_size_at_zoom(zoom);
-
-        //         println!("layer: {:#?}", layer.name);
-
-        //         // layer.
-        //     }
-
-        //     // tile.
-        // });
     }
-    // _getTileFeatures(tile, zoom) {
-    //     const position = tile.position;
-    //     const layers = {};
-    //     const drawOrder = this._generateDrawOrder(zoom);
-    //     for (const layerId of drawOrder) {
-    //         const layer = (tile.data.layers || {})[layerId];
-    //         if (!layer) {
-    //             continue;
-    //         }
-
-    //         const scale = layer.extent / utils.tilesizeAtZoom(zoom);
-    //         layers[layerId] = {
-    //             scale: scale,
-    //             features: layer.tree.search({
-    //                 minX: -position.x * scale,
-    //                 minY: -position.y * scale,
-    //                 maxX: (this.width - position.x) * scale,
-    //                 maxY: (this.height - position.y) * scale
-    //             }),
-    //         };
-    //     }
-    //     tile.layers = layers;
-    //     return tile;
-    // }
 
     pub fn generate_draw_order(zoom: f64) -> Vec<String> {
         let features = if zoom < 2. {
@@ -118,40 +169,6 @@ impl Renderer<TileServerSource> {
         };
         features.into_iter().map(|s| s.to_string()).collect()
     }
-
-    // async draw(center, zoom) {
-    //     if (this.isDrawing) return Promise.reject();
-    //     this.isDrawing = true;
-
-    //     this.labelBuffer.clear();
-    //     this._seen = {};
-
-    //     let ref;
-    //     const color = ((ref = this.styler.styleById['background']) !== null ?
-    //         ref.paint['background-color'] :
-    //         void 0
-    //     );
-    //     if (color) {
-    //         this.canvas.setBackground(x256(utils.hex2rgb(color)));
-    //     }
-
-    //     this.canvas.clear();
-
-    //     try {
-    //         let tiles = this._visibleTiles(center, zoom);
-    //         await Promise.all(tiles.map(async (tile) => {
-    //             await this._getTile(tile);
-    //             this._getTileFeatures(tile, zoom);
-    //         }));
-    //         await this._renderTiles(tiles);
-    //         return this._getFrame();
-    //     } catch (e) {
-    //         console.error(e);
-    //     } finally {
-    //         this.isDrawing = false;
-    //         this.lastDrawAt = Date.now();
-    //     }
-    // }
 
     pub fn visible_tiles(&self, center: &Coords, zoom: f64) -> Vec<tile::Tile> {
         let z = util::base_zoom(zoom);
