@@ -1,4 +1,5 @@
 use crate::vector_tile::{self, tile::GeomType};
+use image::{GenericImage, GenericImageView, ImageBuffer, Rgb, RgbImage};
 
 #[derive(Debug)]
 pub struct Tile {
@@ -58,6 +59,14 @@ impl Tile {
 
     pub fn process(&self) {
         if let Some(vtile) = self.vtile.as_ref() {
+            let mut img: RgbImage = ImageBuffer::new(10000, 10000);
+
+            for (x, y, pixel) in img.enumerate_pixels_mut() {
+                let r = (0.1 * x as f32) as u8;
+                let b = (0.1 * y as f32) as u8;
+                *pixel = image::Rgb([r, 0, b]);
+            }
+
             for layer in &vtile.layers {
                 for feature in &layer.features {
                     let mut cursor = (0, 0);
@@ -69,12 +78,32 @@ impl Tile {
                         GeomType::Unknown => {
                             panic!("Found unknown geometry, don't know how to interpret this");
                         }
-                        GeomType::Point => {}
+                        GeomType::Point => {
+                            for c in commands {
+                                match c {
+                                    GeometryCommand::MoveTo(dx, dy) => {
+                                        cursor = (cursor.0 + dx, cursor.1 + dy);
+
+                                        if 0 <= cursor.0 && 0 <= cursor.1 {
+                                            img.put_pixel(
+                                                cursor.0 as u32,
+                                                cursor.1 as u32,
+                                                Rgb([255, 255, 255]),
+                                            );
+                                        }
+                                    }
+                                    _ => {
+                                        panic!("Point geometry can only contain MoveTo commands");
+                                    }
+                                };
+                            }
+                        }
                         GeomType::Linestring => {}
                         GeomType::Polygon => {}
                     }
                 }
             }
+            img.save("test.png").unwrap();
         }
     }
 

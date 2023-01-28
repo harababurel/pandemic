@@ -6,18 +6,19 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+# bevy = "0.9"
+# macroquad = "0.3"
+# miniquad = "0.3.15"
+clap = { version = "4.1", features = ["derive"] }
+colored = "2"
+image = "0.24"
+pancurses = "0.17.0"
+prost = "0.11"
+rand = "*"
+reqwest = { version = "0.11", features = ["blocking", "json", "gzip"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
-reqwest = { version = "0.11", features = ["blocking", "json", "gzip"] }
-rand = "*"
-colored = "2"
-clap = { version = "4.1", features = ["derive"] }
-pancurses = "0.17.0"
-# miniquad = "0.3.15"
-# macroquad = "0.3"
-# bevy = "0.9"
-prost = "0.11"
 
 
 # Enable max optimizations for dependencies, but not for our code:
