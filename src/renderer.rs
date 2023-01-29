@@ -11,18 +11,20 @@ pub struct Renderer<TS: TileSource> {
     width: usize,
     height: usize,
     tilesource: TS,
+    img: RgbImage,
 }
 
 impl Renderer<TileServerSource> {
-    pub fn new() -> Self {
+    pub fn new(width: usize, height: usize) -> Self {
         Renderer {
-            width: 1280,
-            height: 720,
+            width,
+            height,
             tilesource: TileServerSource::new(),
+            img: ImageBuffer::new(width as u32, height as u32),
         }
     }
 
-    pub fn draw(&self, center: &util::Coords, zoom: f64) {
+    pub fn draw(&mut self, center: &util::Coords, zoom: f64) {
         let mut tiles: Vec<tile::Tile> = self.visible_tiles(center, zoom);
 
         tiles.iter_mut().for_each(|ref mut t| {
@@ -33,28 +35,46 @@ impl Renderer<TileServerSource> {
                 .vtile;
         });
 
-        let mut img: RgbImage = ImageBuffer::new(1920, 1280);
-        for (x, y, pixel) in img.enumerate_pixels_mut() {
+        for (x, y, pixel) in self.img.enumerate_pixels_mut() {
             let r = (100.0 + 0.2 * x as f32) as u8;
             let b = (100.0 + 0.2 * y as f32) as u8;
             *pixel = image::Rgb([r, 0, b]);
         }
         for t in &tiles {
-            self.draw_tile(&mut img, &t, zoom);
+            self.draw_tile(&t, zoom);
         }
-        img.save("test.png").unwrap();
+        self.img.save("test.png").unwrap();
     }
-    pub fn draw_tile(&self, img: &mut RgbImage, t: &tile::Tile, zoom: f64) {
+    pub fn draw_tile(&mut self, t: &tile::Tile, zoom: f64) {
+        let scale = 0.5;
+        let tdx = t.xyz.0;
+        let tdy = t.xyz.1;
+
+        println!("tdx={}, tdy={}", tdx, tdy);
+
+        let colors = vec![
+            Rgb([47, 79, 79]),
+            // Rgb([107, 142, 35]),
+            // Rgb([100, 149, 237]),
+            // Rgb([192, 192, 192]),
+            // Rgb([221, 160, 221]),
+            // Rgb([106, 90, 205]),
+            // Rgb([255, 248, 220]),
+            // Rgb([255, 228, 196]),
+            // Rgb([250, 128, 114]),
+        ];
+
+        let color = colors[((tdx * 3 + tdy) as usize) % colors.len()];
+
         if let Some(vtile) = t.vtile.as_ref() {
             for layer in &vtile.layers {
                 let extent = layer.extent();
-
                 println!("layer extent is {}", extent);
 
                 for feature in &layer.features {
                     let mut cursor = (0, 0);
                     let commands = tile::Tile::parse_geometry(&feature.geometry);
-                    println!("Commands: {:?}", commands);
+                    // println!("Commands: {:?}", commands);
 
                     match feature.r#type() {
                         vector_tile::tile::GeomType::Unknown => {
@@ -67,7 +87,7 @@ impl Renderer<TileServerSource> {
                                         let ncursor = (cursor.0 + dx, cursor.1 + dy);
 
                                         if 0 <= ncursor.0 && 0 <= ncursor.1 {
-                                            img.put_pixel(
+                                            self.img.put_pixel(
                                                 cursor.0 as u32,
                                                 cursor.1 as u32,
                                                 Rgb([255, 255, 255]),
@@ -82,11 +102,6 @@ impl Renderer<TileServerSource> {
                             }
                         }
                         vector_tile::tile::GeomType::Linestring => {
-                            let scale = 0.2;
-
-                            let tdx = t.xyz.0 as f32;
-                            let tdy = t.xyz.1 as f32;
-
                             for c in commands {
                                 match c {
                                     tile::GeometryCommand::MoveTo(dx, dy) => {
@@ -94,24 +109,11 @@ impl Renderer<TileServerSource> {
                                     }
                                     tile::GeometryCommand::LineTo(dx, dy) => {
                                         let ncursor = (cursor.0 + dx, cursor.1 + dy);
-                                        if 0 <= ncursor.0 && 0 <= ncursor.1 {
-                                            imageproc::drawing::draw_line_segment_mut(
-                                                img,
-                                                (
-                                                    cursor.0 as f32 * scale
-                                                        + tdx * extent as f32 * scale,
-                                                    cursor.1 as f32 * scale
-                                                        + tdy * extent as f32 * scale,
-                                                ), // start point
-                                                (
-                                                    ncursor.0 as f32 * scale
-                                                        + tdx * extent as f32 * scale,
-                                                    ncursor.1 as f32 * scale
-                                                        + tdy * extent as f32 * scale,
-                                                ), // end point
-                                                Rgb([0u8, 0u8, 0u8]), // RGB colors
-                                            );
-                                        }
+                                        // if 0 <= ncursor.0 && 0 <= ncursor.1 {
+                                        self.draw_line_on_img(
+                                            cursor, ncursor, scale, extent, tdx, tdy, color,
+                                        );
+                                        // }
                                         cursor = ncursor;
                                     }
                                     _ => {
@@ -120,7 +122,38 @@ impl Renderer<TileServerSource> {
                                 }
                             }
                         }
-                        vector_tile::tile::GeomType::Polygon => {}
+                        vector_tile::tile::GeomType::Polygon => {
+                            let mut polygon_start = (0, 0);
+                            for c in commands {
+                                match c {
+                                    tile::GeometryCommand::MoveTo(dx, dy) => {
+                                        cursor = (cursor.0 + dx, cursor.1 + dy);
+                                        polygon_start = cursor;
+                                    }
+                                    tile::GeometryCommand::LineTo(dx, dy) => {
+                                        let ncursor = (cursor.0 + dx, cursor.1 + dy);
+                                        // if 0 <= ncursor.0 && 0 <= ncursor.1 {
+                                        self.draw_line_on_img(
+                                            cursor, ncursor, scale, extent, tdx, tdy, color,
+                                        );
+                                        // }
+                                        cursor = ncursor;
+                                    }
+                                    tile::GeometryCommand::ClosePath => {
+                                        self.draw_line_on_img(
+                                            cursor,
+                                            polygon_start,
+                                            scale,
+                                            extent,
+                                            tdx,
+                                            tdy,
+                                            color,
+                                        );
+                                        // unimplemented!("moveto");
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -144,6 +177,30 @@ impl Renderer<TileServerSource> {
             );
             // println!("\tkeys: {:?}", l.keys);
         });
+    }
+
+    pub fn draw_line_on_img(
+        &mut self,
+        p: (i32, i32),
+        q: (i32, i32),
+        scale: f32,
+        extent: u32,
+        tdx: i32,
+        tdy: i32,
+        color: Rgb<u8>,
+    ) {
+        imageproc::drawing::draw_line_segment_mut(
+            &mut self.img,
+            (
+                p.0 as f32 * scale + tdx as f32 * extent as f32 * scale,
+                p.1 as f32 * scale + tdy as f32 * extent as f32 * scale,
+            ), // start point
+            (
+                q.0 as f32 * scale + tdx as f32 * extent as f32 * scale,
+                q.1 as f32 * scale + tdy as f32 * extent as f32 * scale,
+            ), // end point
+            color, // Rgb([0u8, 0u8, 0u8]), // RGB colors
+        );
     }
 
     pub fn generate_draw_order(zoom: f64) -> Vec<String> {

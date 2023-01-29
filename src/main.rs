@@ -71,14 +71,16 @@ fn main() {
     // endwin();
 
     let center = pandemic::util::Coords::from_deg(args.lon, args.lat);
-    let zoom = 1.;
+    let zoom = 3.0;
 
     let t = pandemic::util::coords_to_tile(&center, zoom);
     let (x, y) = (t.x, t.y);
     println!("Initial tile: z={zoom}, x={x}, y={y}");
 
+    let int_zoom = zoom.floor() as u32;
+
     let res =
-        reqwest::blocking::get(format!("{}/data/v3/{zoom}/{x}/{y}.pbf", args.tileserver)).unwrap();
+        reqwest::blocking::get(format!("{}/data/v3/{int_zoom}/{x}/{y}.pbf", args.tileserver)).unwrap();
 
     let buf = res.bytes().unwrap();
     println!("Raw size: {}", buf.len());
@@ -88,7 +90,7 @@ fn main() {
     println!("Decoded x = {:#?}", &x);
     println!("Raw size: {}", buf.len());
 
-    let renderer = pandemic::renderer::Renderer::new();
+    let mut renderer = pandemic::renderer::Renderer::new(2160, 2160);
     println!(
         "Visible tiles: {:?}",
         renderer.visible_tiles(&center, zoom).len()
