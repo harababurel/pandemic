@@ -3,6 +3,8 @@ use crate::vector_tile::{self, tile::GeomType};
 #[derive(Debug)]
 pub struct Tile {
     pub zxy: (usize, i32, i32),
+    // Coordinates in screen space. Top-left is tile (0, 0)
+    pub offset: Option<(u32, u32)>,
     pub vtile: Option<vector_tile::Tile>,
 }
 
@@ -17,6 +19,7 @@ impl Tile {
     pub fn from_proto(x: i32, y: i32, z: usize, vtile: vector_tile::Tile) -> Self {
         Tile {
             zxy: (z, x, y),
+            offset: None,
             vtile: Some(vtile),
         }
     }

@@ -71,7 +71,7 @@ fn main() {
     // endwin();
 
     let center = pandemic::util::Coords::from_deg(args.lon, args.lat);
-    let zoom = 0;
+    let zoom = 3;
 
     let t = pandemic::util::coords_to_tile(&center, zoom as f64);
     let (x, y) = (t.x, t.y);
