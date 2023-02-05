@@ -11,8 +11,8 @@ pub struct Coords {
 }
 
 pub struct TileCoords {
-    pub x: f64,
-    pub y: f64,
+    pub x: u32,
+    pub y: u32,
 }
 
 impl Coords {
@@ -22,7 +22,7 @@ impl Coords {
 }
 
 impl TileCoords {
-    pub fn new(x: f64, y: f64) -> Self {
+    pub fn new(x: u32, y: u32) -> Self {
         TileCoords { x, y }
     }
 }
@@ -30,8 +30,8 @@ impl TileCoords {
 pub fn coords_to_tile(c: &Coords, zoom: f64) -> TileCoords {
     let lat_rad = c.lat.to_radians();
     let n = 2f64.powf(zoom);
-    let xtile = ((c.lon + 180.) / 360. * n).floor();
-    let ytile = ((1. - lat_rad.tan().asinh() / PI) / 2. * n).floor();
+    let xtile = ((c.lon + 180.) / 360. * n).floor() as u32;
+    let ytile = ((1. - lat_rad.tan().asinh() / PI) / 2. * n).floor() as u32;
 
     TileCoords::new(xtile, ytile)
 }
@@ -45,10 +45,10 @@ pub fn tile_to_coords(t: &TileCoords, zoom: f64) -> Coords {
     Coords::from_deg(lon_deg, lat_deg)
 }
 
-pub fn base_zoom(zoom: f64) -> usize {
-    (zoom.floor() as usize).max(0).min(14) // config.tilerange = 14
-}
+// pub fn base_zoom(zoom: f64) -> usize {
+//     (zoom.floor() as usize).max(0).min(14) // config.tilerange = 14
+// }
 
-pub fn tile_size_at_zoom(zoom: f64) -> f64 {
-    PROJECT_SIZE as f64 * 2f64.powf(zoom - base_zoom(zoom) as f64)
-}
+// pub fn tile_size_at_zoom(zoom: f64) -> f64 {
+//     PROJECT_SIZE as f64 * 2f64.powf(zoom - base_zoom(zoom) as f64)
+// }

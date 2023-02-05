@@ -2,10 +2,7 @@ use crate::vector_tile::{self, tile::GeomType};
 
 #[derive(Debug)]
 pub struct Tile {
-    pub xyz: (i32, i32, usize),
-    pub zoom: f64,
-    pub position: (f64, f64),
-    pub size: f64,
+    pub zxy: (usize, i32, i32),
     pub vtile: Option<vector_tile::Tile>,
 }
 
@@ -19,12 +16,19 @@ pub enum GeometryCommand {
 impl Tile {
     pub fn from_proto(x: i32, y: i32, z: usize, vtile: vector_tile::Tile) -> Self {
         Tile {
-            xyz: (x, y, z),
-            position: (0., 0.),
-            size: 0.,
-            zoom: 0.,
+            zxy: (z, x, y),
             vtile: Some(vtile),
         }
+    }
+
+    pub fn x(&self) -> i32 {
+        self.zxy.1
+    }
+    pub fn y(&self) -> i32 {
+        self.zxy.2
+    }
+    pub fn z(&self) -> usize {
+        self.zxy.0
     }
 
     pub fn parse_geometry(geometry: &Vec<u32>) -> Vec<GeometryCommand> {

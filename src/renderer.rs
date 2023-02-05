@@ -24,13 +24,13 @@ impl Renderer<TileServerSource> {
         }
     }
 
-    pub fn draw(&mut self, center: &util::Coords, zoom: f64) {
+    pub fn draw(&mut self, center: &util::Coords, zoom: u32) {
         let mut tiles: Vec<tile::Tile> = self.visible_tiles(center, zoom);
 
         tiles.iter_mut().for_each(|ref mut t| {
             t.vtile = self
                 .tilesource
-                .get_tile(t.xyz.2, t.xyz.0, t.xyz.1)
+                .get_tile(t.z(), t.x(), t.y())
                 .unwrap()
                 .vtile;
         });
@@ -45,10 +45,10 @@ impl Renderer<TileServerSource> {
         }
         self.img.save("test.png").unwrap();
     }
-    pub fn draw_tile(&mut self, t: &tile::Tile, zoom: f64) {
+    pub fn draw_tile(&mut self, t: &tile::Tile, zoom: u32) {
         let scale = 0.5;
-        let tdx = t.xyz.0;
-        let tdy = t.xyz.1;
+        let tdx = t.x();
+        let tdy = t.y();
 
         println!("tdx={}, tdy={}", tdx, tdy);
 
@@ -227,50 +227,69 @@ impl Renderer<TileServerSource> {
         features.into_iter().map(|s| s.to_string()).collect()
     }
 
-    pub fn visible_tiles(&self, center: &Coords, zoom: f64) -> Vec<tile::Tile> {
-        let z = util::base_zoom(zoom);
+    pub fn visible_tiles(&self, center: &Coords, zoom: u32) -> Vec<tile::Tile> {
+        let center_t = util::coords_to_tile(center, zoom as f64);
 
-        let center = util::coords_to_tile(center, z as f64);
-        let tile_size = util::tile_size_at_zoom(zoom);
+        let tile_size = 256;
+
+        let uncovered_right =
+            ((self.width - tile_size) as f64 / 2.0 / (tile_size as f64)).ceil() as u32;
+        let uncovered_up =
+            ((self.height - tile_size) as f64 / 2.0 / (tile_size as f64)).ceil() as u32;
 
         let mut tiles: HashMap<(i32, i32, usize), tile::Tile> = HashMap::new();
-
-        for dy in [-1, 0, 1] {
-            for dx in [-1, 0, 1] {
-                let mut tx = center.x.floor() as i32 + dx;
-                let mut ty = center.y.floor() as i32 + dy;
-
-                let pos_x = self.width as f64 / 2. - (center.x - tx as f64) * tile_size;
-                let pos_y = self.height as f64 / 2. - (center.y - ty as f64) * tile_size;
-                let grid_size = 2i32.pow(z as u32);
-
-                tx %= grid_size;
-                if tx < 0 {
-                    tx = if z == 0 { 0 } else { tx + grid_size };
-                }
-
-                if ty < 0
-                    || ty >= grid_size
-                    || pos_x + tile_size < 0.
-                    || pos_y + tile_size < 0.
-                    || pos_x > self.width as f64
-                    || pos_y > self.height as f64
-                {
-                    continue;
-                }
-
-                tiles.insert(
-                    (tx, ty, z),
-                    tile::Tile {
-                        xyz: (tx, ty, z),
-                        zoom,
-                        position: (pos_x, pos_y),
-                        size: tile_size,
-                        vtile: None,
-                    },
-                );
+        for dx in 0..(uncovered_right + 1) {
+            for dy in 0..(uncovered_up + 1) {
+                        tiles.insert(
+                            (center_t.x() - dx , center_t.y(), z),
+                            tile::Tile {
+                                zxy: (z, tx, ty),
+                                vtile: None,
+                            },
+                        );
             }
         }
+
         tiles.into_values().collect()
+
+        // let mut tiles: HashMap<(i32, i32, usize), tile::Tile> = HashMap::new();
+
+        // for dy in [-1, 0, 1] {
+        //     for dx in [-1, 0, 1] {
+        //         let mut tx = center.x.floor() as i32 + dx;
+        //         let mut ty = center.y.floor() as i32 + dy;
+
+        //         let pos_x = self.width as f64 / 2. - (center.x - tx as f64) * tile_size;
+        //         let pos_y = self.height as f64 / 2. - (center.y - ty as f64) * tile_size;
+        //         let grid_size = 2i32.pow(z as u32);
+
+        //         tx %= grid_size;
+        //         if tx < 0 {
+        //             tx = if z == 0 { 0 } else { tx + grid_size };
+        //         }
+
+        //         if ty < 0
+        //             || ty >= grid_size
+        //             || pos_x + tile_size < 0.
+        //             || pos_y + tile_size < 0.
+        //             || pos_x > self.width as f64
+        //             || pos_y > self.height as f64
+        //         {
+        //             continue;
+        //         }
+
+        //         tiles.insert(
+        //             (tx, ty, z),
+        //             tile::Tile {
+        //                 xyz: (tx, ty, z),
+        //                 zoom,
+        //                 position: (pos_x, pos_y),
+        //                 size: tile_size,
+        //                 vtile: None,
+        //             },
+        //         );
+        //     }
+        // }
+        // tiles.into_values().collect()
     }
 }
