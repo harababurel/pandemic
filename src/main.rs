@@ -77,7 +77,7 @@ fn main() {
 
     let center = pandemic::util::Coords::from_deg(args.lon, args.lat);
 
-    let mut renderer = pandemic::renderer::Renderer::new((3840, 2160), center);
+    let mut renderer = pandemic::renderer::Renderer::new((1920, 1080), center);
 
     let window = initscr();
     loop {

@@ -5,6 +5,7 @@ const PROJECT_SIZE: u32 = 256;
 
 // https://wiki.openstreetmap.org/wiki/Slippy_map_tilenames
 
+#[derive(Debug)]
 pub struct Coords {
     pub lon: f64,
     pub lat: f64,

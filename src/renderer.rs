@@ -1,4 +1,4 @@
-use crate::tile;
+use crate::tile::{self, Tile};
 use crate::tilesource::{TileServerSource, TileSource};
 use crate::util;
 use crate::util::Coords;
@@ -38,7 +38,7 @@ impl Renderer<TileServerSource> {
             zoom: 3,
             tilesource: TileServerSource::new(),
             img: ImageBuffer::new(res.0 as u32, res.1 as u32),
-            rel_zoom: 20.,
+            rel_zoom: 1.,
         }
     }
 
@@ -74,6 +74,7 @@ impl Renderer<TileServerSource> {
         // }
         for t in &tiles {
             self.draw_tile(&t);
+            self.screen_position(&t);
         }
         self.img.save("test.png").unwrap();
     }
@@ -88,21 +89,21 @@ impl Renderer<TileServerSource> {
 
         info!("bounding box: {:?}", t.bounds());
         let layer_colors = hashmap! {
-        "aeroway" => Rgb([47, 79, 79]),
-        "boundary" => Rgb([107, 142, 35]),
-        "building" => Rgb([100, 149, 237]),
-        "housenumber" => Rgb([192, 192, 192]),
-        "landcover" => Rgb([221, 160, 221]),
-        "landuse" => Rgb([106, 90, 205]),
-        "mountain_peak" => Rgb([255, 248, 220]),
-        "park" => Rgb([255, 228, 196]),
-        "place" => Rgb([250, 128, 114]),
-        "poi" => Rgb([250, 128, 114]),
-        "transportation" => Rgb([250, 128, 114]),
-        "transportation_name" => Rgb([250, 128, 114]),
-        "water" => Rgb([250, 128, 114]),
-        "water_name" => Rgb([250, 128, 114]),
-        "waterway" => Rgb([250, 128, 114])
+            "aeroway" => Rgb([47, 79, 79]),
+            "boundary" => Rgb([107, 142, 35]),
+            "building" => Rgb([100, 149, 237]),
+            "housenumber" => Rgb([192, 192, 192]),
+            "landcover" => Rgb([221, 160, 221]),
+            "landuse" => Rgb([106, 90, 205]),
+            "mountain_peak" => Rgb([255, 248, 220]),
+            "park" => Rgb([255, 228, 196]),
+            "place" => Rgb([253, 150, 147]),
+            "poi" => Rgb([4, 88, 187]),
+            "transportation" => Rgb([241, 5, 37]),
+            "transportation_name" => Rgb([19, 79, 94]),
+            "water" => Rgb([176, 1, 20]),
+            "water_name" => Rgb([254, 70, 216]),
+            "waterway" => Rgb([107, 41, 12])
         };
 
         if let Some(vtile) = t.vtile.as_ref() {
@@ -253,6 +254,19 @@ impl Renderer<TileServerSource> {
                 color, // Rgb([0u8, 0u8, 0u8]), // RGB colors
             );
         }
+    }
+
+    // Pixel coordinates of the top-left corner of a given tile, such that self.center is rendered
+    // exactly at the center of the canvas.
+    pub fn screen_position(&self, t: &Tile) -> (u32, u32) {
+        let b = t.bounds();
+
+        info!(
+            "Tile bounds are {:?}, renderer is centered on {:?}",
+            b, self.center
+        );
+
+        (0, 0)
     }
 
     pub fn point_within_bounds(&self, p: (f32, f32)) -> bool {
