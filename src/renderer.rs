@@ -11,6 +11,14 @@ use std::f64::consts::PI;
 const MIN_ZOOM: u32 = 0;
 const MAX_ZOOM: u32 = 14;
 
+macro_rules! hashmap {
+    ($( $key: expr => $val: expr ),*) => {{
+         let mut map = ::std::collections::HashMap::new();
+         $( map.insert($key, $val); )*
+         map
+    }}
+}
+
 pub struct Renderer<TS: TileSource> {
     width: usize,
     height: usize,
@@ -30,7 +38,7 @@ impl Renderer<TileServerSource> {
             zoom: 3,
             tilesource: TileServerSource::new(),
             img: ImageBuffer::new(res.0 as u32, res.1 as u32),
-            rel_zoom: 7.,
+            rel_zoom: 20.,
         }
     }
 
@@ -78,23 +86,31 @@ impl Renderer<TileServerSource> {
 
         debug!("tdx={}, tdy={}", tdx, tdy);
 
-        let colors = vec![
-            Rgb([47, 79, 79]),
-            Rgb([107, 142, 35]),
-            Rgb([100, 149, 237]),
-            Rgb([192, 192, 192]),
-            Rgb([221, 160, 221]),
-            Rgb([106, 90, 205]),
-            Rgb([255, 248, 220]),
-            Rgb([255, 228, 196]),
-            Rgb([250, 128, 114]),
-        ];
-
-        let color = colors[thread_rng().gen_range(0..colors.len())];
+        let layer_colors = hashmap! {
+        "aeroway" => Rgb([47, 79, 79]),
+        "boundary" => Rgb([107, 142, 35]),
+        "building" => Rgb([100, 149, 237]),
+        "housenumber" => Rgb([192, 192, 192]),
+        "landcover" => Rgb([221, 160, 221]),
+        "landuse" => Rgb([106, 90, 205]),
+        "mountain_peak" => Rgb([255, 248, 220]),
+        "park" => Rgb([255, 228, 196]),
+        "place" => Rgb([250, 128, 114]),
+        "poi" => Rgb([250, 128, 114]),
+        "transportation" => Rgb([250, 128, 114]),
+        "transportation_name" => Rgb([250, 128, 114]),
+        "water" => Rgb([250, 128, 114]),
+        "water_name" => Rgb([250, 128, 114]),
+        "waterway" => Rgb([250, 128, 114])
+        };
 
         if let Some(vtile) = t.vtile.as_ref() {
             for layer in &vtile.layers {
                 let extent = layer.extent();
+
+                let color = layer_colors.get(layer.name.as_str()).unwrap_or(&Rgb([255,255,255]));
+
+                error!("layer,{}", layer.name);
 
                 for feature in &layer.features {
                     let mut cursor = (0, 0);
@@ -135,7 +151,7 @@ impl Renderer<TileServerSource> {
                                     tile::GeometryCommand::LineTo(dx, dy) => {
                                         let nc = (cursor.0 + dx, cursor.1 + dy);
                                         self.draw_line_on_img(
-                                            cursor, nc, extent, tdx, tdy, ox, oy, color,
+                                            cursor, nc, extent, tdx, tdy, ox, oy, *color,
                                         );
                                         cursor = nc;
                                     }
@@ -160,7 +176,7 @@ impl Renderer<TileServerSource> {
                                             && (nc.1 - cursor.1).abs() > 0
                                         {
                                             self.draw_line_on_img(
-                                                cursor, nc, extent, tdx, tdy, ox, oy, color,
+                                                cursor, nc, extent, tdx, tdy, ox, oy, *color,
                                             );
                                         }
                                         cursor = nc;
@@ -174,7 +190,7 @@ impl Renderer<TileServerSource> {
                                             tdy,
                                             ox,
                                             oy,
-                                            color,
+                                            *color,
                                         );
                                         // unimplemented!("moveto");
                                     }

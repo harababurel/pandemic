@@ -26,6 +26,7 @@ struct Cli {
 
 fn main() {
     let args = Cli::parse();
+    pretty_env_logger::init();
 
     let mut game =
         pandemic::Game::from_file("cities.json").expect("Could not create game from cities.json");
@@ -81,6 +82,7 @@ fn main() {
     let window = initscr();
     loop {
         window.printw(format!("Zoom: {}\n", renderer.zoom));
+        renderer.draw();
 
         match window.getch() {
             Some(Input::Character('a')) => {
@@ -90,15 +92,14 @@ fn main() {
                 renderer.zoom_out();
             }
             Some(Input::Character('q')) => {
+                endwin();
                 break;
             }
             _ => {}
         }
         window.clear();
         window.refresh();
-        renderer.draw();
     }
-    endwin();
 
     // game.run();
 }
