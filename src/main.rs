@@ -1,14 +1,18 @@
 #![allow(unused_imports)]
 #![allow(unused_variables)]
 
+extern crate pretty_env_logger;
+#[macro_use]
+extern crate log;
+
 use clap::Parser;
 use pancurses;
+use pancurses::{endwin, initscr, Input};
 use pandemic;
 use prost::Message;
 use reqwest;
 use std::collections::HashMap;
 use std::io::prelude::*;
-// use pancurses::{endwin, initscr};
 
 #[derive(Parser)]
 struct Cli {
@@ -32,70 +36,69 @@ fn main() {
         .expect("Could not create medic in Atlanta");
     game.setup();
 
-    println!("There are {} players", game.players.len());
-    println!("There are {} cities", game.world.len());
-    println!("There are {} player cards", game.player_cards.len());
-    println!(
+    info!("There are {} players", game.players.len());
+    info!("There are {} cities", game.world.len());
+    info!("There are {} player cards", game.player_cards.len());
+    info!(
         "There are {} infection cards ({} discarded)",
         game.infection_card_pile.len(),
         game.infection_discard_pile.len()
     );
-    println!("Outbreaks: {}", game.outbreaks);
-    println!(
+    info!("Outbreaks: {}", game.outbreaks);
+    info!(
         "Infection rate: {} (level={})",
         game.infection_rate(),
         game.infection_level
     );
 
     for city in game.world.values() {
-        println!("{}", city);
+        info!("{}", city);
     }
-    println!();
 
     let actions = game.possible_actions(&game.players[0]);
 
-    println!(
+    info!(
         "{:#?} can perform one of {} actions:",
         &game.players[0],
         actions.len()
     );
 
     for action in actions {
-        println!("{:?}", action);
+        info!("{:?}", action);
     }
 
-    // let window = initscr();
-    // window.printw("Hello Rust");
-    // window.refresh();
-    // window.getch();
-    // endwin();
+    // let t = pandemic::util::coords_to_tile(&center, zoom as f64);
+    // let (x, y) = (t.x, t.y);
+    // info!("Initial tile: z={zoom}, x={x}, y={y}");
+    // let x = pandemic::vector_tile::Tile::decode(&mut std::io::Cursor::new(buf.clone())).unwrap();
+    // info!("Decoded x = {:#?}", &x);
+    // info!("Raw size: {}", buf.len());
 
     let center = pandemic::util::Coords::from_deg(args.lon, args.lat);
-    let zoom = 3;
 
-    let t = pandemic::util::coords_to_tile(&center, zoom as f64);
-    let (x, y) = (t.x, t.y);
-    println!("Initial tile: z={zoom}, x={x}, y={y}");
+    let mut renderer = pandemic::renderer::Renderer::new((3840, 2160), center);
 
+    let window = initscr();
+    loop {
+        window.printw(format!("Zoom: {}\n", renderer.zoom));
 
-    let res =
-        reqwest::blocking::get(format!("{}/data/v3/{zoom}/{x}/{y}.pbf", args.tileserver)).unwrap();
+        match window.getch() {
+            Some(Input::Character('a')) => {
+                renderer.zoom_in();
+            }
+            Some(Input::Character('z')) => {
+                renderer.zoom_out();
+            }
+            Some(Input::Character('q')) => {
+                break;
+            }
+            _ => {}
+        }
+        window.clear();
+        window.refresh();
+        renderer.draw();
+    }
+    endwin();
 
-    let buf = res.bytes().unwrap();
-    println!("Raw size: {}", buf.len());
-
-    let x = pandemic::vector_tile::Tile::decode(&mut std::io::Cursor::new(buf.clone())).unwrap();
-
-    println!("Decoded x = {:#?}", &x);
-    println!("Raw size: {}", buf.len());
-
-    let mut renderer = pandemic::renderer::Renderer::new(3840, 2160);
-    println!(
-        "Visible tiles: {:?}",
-        renderer.visible_tiles(&center, zoom).len()
-    );
-
-    renderer.draw(&center, zoom);
-
-    game.run();
+    // game.run();
 }

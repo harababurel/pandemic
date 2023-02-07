@@ -4,54 +4,79 @@ use crate::util;
 use crate::util::Coords;
 use crate::vector_tile;
 use image::{GenericImage, GenericImageView, ImageBuffer, Rgb, RgbImage};
+use rand::{thread_rng, Rng};
 use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
+
+const MIN_ZOOM: u32 = 0;
+const MAX_ZOOM: u32 = 14;
 
 pub struct Renderer<TS: TileSource> {
     width: usize,
     height: usize,
+    center: Coords,
+    pub zoom: u32,
     tilesource: TS,
     img: RgbImage,
     rel_zoom: f64,
 }
 
 impl Renderer<TileServerSource> {
-    pub fn new(width: usize, height: usize) -> Self {
+    pub fn new(res: (usize, usize), center: Coords) -> Self {
         Renderer {
-            width,
-            height,
+            width: res.0,
+            height: res.1,
+            center,
+            zoom: 3,
             tilesource: TileServerSource::new(),
-            img: ImageBuffer::new(width as u32, height as u32),
-            rel_zoom: 4.,
+            img: ImageBuffer::new(res.0 as u32, res.1 as u32),
+            rel_zoom: 7.,
         }
     }
 
-    pub fn draw(&mut self, center: &util::Coords, zoom: u32) {
-        let mut tiles: Vec<tile::Tile> = self.visible_tiles(center, zoom);
+    pub fn zoom_in(&mut self) {
+        self.zoom = std::cmp::min(self.zoom + 1, MAX_ZOOM);
+    }
+
+    pub fn zoom_out(&mut self) {
+        if self.zoom > std::cmp::max(0, MIN_ZOOM) {
+            self.zoom -= 1;
+        }
+    }
+
+    pub fn clear_img(&mut self) {
+        for (_, _, pixel) in self.img.enumerate_pixels_mut() {
+            *pixel = image::Rgb([0, 0, 0]);
+        }
+    }
+
+    pub fn draw(&mut self) {
+        self.clear_img();
+
+        let mut tiles: Vec<tile::Tile> = self.visible_tiles();
 
         tiles.iter_mut().for_each(|ref mut t| {
             t.vtile = self.tilesource.get_tile(t.z(), t.x(), t.y()).unwrap().vtile;
         });
 
-        for (x, y, pixel) in self.img.enumerate_pixels_mut() {
-            let r = (100.0 + 0.2 * x as f32) as u8;
-            let b = (100.0 + 0.2 * y as f32) as u8;
-            *pixel = image::Rgb([r, 0, b]);
-        }
+        // for (x, y, pixel) in self.img.enumerate_pixels_mut() {
+        //     let r = (100.0 + 0.2 * x as f32) as u8;
+        //     let b = (100.0 + 0.2 * y as f32) as u8;
+        //     *pixel = image::Rgb([r, 0, b]);
+        // }
         for t in &tiles {
-            self.draw_tile(&t, zoom);
+            self.draw_tile(&t);
         }
         self.img.save("test.png").unwrap();
     }
-    pub fn draw_tile(&mut self, t: &tile::Tile, zoom: u32) {
-        let scale = 0.01;
+    pub fn draw_tile(&mut self, t: &tile::Tile) {
         let tdx = t.x();
         let tdy = t.y();
 
         let ox = t.offset.unwrap().0;
         let oy = t.offset.unwrap().1;
 
-        println!("tdx={}, tdy={}", tdx, tdy);
+        debug!("tdx={}, tdy={}", tdx, tdy);
 
         let colors = vec![
             Rgb([47, 79, 79]),
@@ -65,12 +90,11 @@ impl Renderer<TileServerSource> {
             Rgb([250, 128, 114]),
         ];
 
-        let color = colors[((ox * 3 + oy) as usize) % colors.len()];
+        let color = colors[thread_rng().gen_range(0..colors.len())];
 
         if let Some(vtile) = t.vtile.as_ref() {
             for layer in &vtile.layers {
                 let extent = layer.extent();
-                println!("layer extent is {}", extent);
 
                 for feature in &layer.features {
                     let mut cursor = (0, 0);
@@ -82,25 +106,25 @@ impl Renderer<TileServerSource> {
                             panic!("Found unknown geometry, don't know how to interpret this");
                         }
                         vector_tile::tile::GeomType::Point => {
-                            // for c in commands {
-                            //     match c {
-                            //         tile::GeometryCommand::MoveTo(dx, dy) => {
-                            //             let nc = (cursor.0 + dx, cursor.1 + dy);
+                            for c in commands {
+                                match c {
+                                    tile::GeometryCommand::MoveTo(dx, dy) => {
+                                        let nc = (cursor.0 + dx, cursor.1 + dy);
 
-                            //             if self.point_within_bounds((nc.0 as f32, nc.1 as f32)) {
-                            //                 self.img.put_pixel(
-                            //                     nc.0 as u32,
-                            //                     nc.1 as u32,
-                            //                     Rgb([255, 255, 255]),
-                            //                 );
-                            //             }
-                            //             cursor = nc;
-                            //         }
-                            //         _ => {
-                            //             panic!("Point geometry can only contain MoveTo commands");
-                            //         }
-                            //     };
-                            // }
+                                        if self.point_within_bounds((nc.0 as f32, nc.1 as f32)) {
+                                            self.img.put_pixel(
+                                                nc.0 as u32,
+                                                nc.1 as u32,
+                                                Rgb([255, 255, 255]),
+                                            );
+                                        }
+                                        cursor = nc;
+                                    }
+                                    _ => {
+                                        panic!("Point geometry can only contain MoveTo commands");
+                                    }
+                                };
+                            }
                         }
                         vector_tile::tile::GeomType::Linestring => {
                             for c in commands {
@@ -132,7 +156,9 @@ impl Renderer<TileServerSource> {
                                     tile::GeometryCommand::LineTo(dx, dy) => {
                                         let nc = (cursor.0 + dx, cursor.1 + dy);
 
-                                        if (nc.0 - cursor.0).abs() > 0 && (nc.1 - cursor.1).abs() > 0 {
+                                        if (nc.0 - cursor.0).abs() > 0
+                                            && (nc.1 - cursor.1).abs() > 0
+                                        {
                                             self.draw_line_on_img(
                                                 cursor, nc, extent, tdx, tdy, ox, oy, color,
                                             );
@@ -238,8 +264,8 @@ impl Renderer<TileServerSource> {
         features.into_iter().map(|s| s.to_string()).collect()
     }
 
-    pub fn visible_tiles(&self, center: &Coords, zoom: u32) -> Vec<tile::Tile> {
-        let center_t = util::coords_to_tile(center, zoom as f64);
+    pub fn visible_tiles(&self) -> Vec<tile::Tile> {
+        let center_t = util::coords_to_tile(&self.center, self.zoom as f64);
 
         let tile_size = 256;
 
@@ -250,7 +276,7 @@ impl Renderer<TileServerSource> {
             ((self.height - tile_size) as f64 / 2.0 / (tile_size as f64) / self.rel_zoom).ceil()
                 as i32;
 
-        let max_tile = 2i32.pow(zoom) - 1;
+        let max_tile = 2i32.pow(self.zoom) - 1;
 
         let mut tiles: Vec<tile::Tile> = Vec::new();
         for dx in (-uncovered_right)..(uncovered_right + 1) {
@@ -260,7 +286,7 @@ impl Renderer<TileServerSource> {
 
                 if 0 <= tx && tx <= max_tile && 0 <= ty && ty <= max_tile {
                     tiles.push(tile::Tile {
-                        zxy: (zoom as usize, tx, ty),
+                        zxy: (self.zoom as usize, tx, ty),
                         offset: Some(((dx + uncovered_right) as u32, (dy + uncovered_up) as u32)),
                         vtile: None,
                     });

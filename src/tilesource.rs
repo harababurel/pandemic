@@ -25,7 +25,7 @@ impl TileServerSource {
 impl TileSource for TileServerSource {
     fn get_tile(&self, z: usize, x: i32, y: i32) -> Result<tile::Tile, TileSourceError> {
         let endpoint = format!("{}/data/v3/{z}/{x}/{y}.pbf", self.tileserver);
-        println!("Fetching tile from {}", endpoint);
+        info!("Fetching tile from {}", endpoint);
         let res = reqwest::blocking::get(endpoint)?;
         let buf = res.bytes()?;
         let vtile = vector_tile::Tile::decode(&mut std::io::Cursor::new(buf.clone()))?;

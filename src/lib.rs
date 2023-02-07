@@ -3,6 +3,10 @@
 #![allow(unused_variables)]
 #![allow(unused_mut)]
 
+extern crate pretty_env_logger;
+#[macro_use]
+extern crate log;
+
 use colored::Colorize;
 use rand::prelude::*;
 use serde::{Deserialize, Deserializer, Serialize};
