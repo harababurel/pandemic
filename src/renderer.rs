@@ -86,6 +86,7 @@ impl Renderer<TileServerSource> {
 
         debug!("tdx={}, tdy={}", tdx, tdy);
 
+        info!("bounding box: {:?}", t.bounds());
         let layer_colors = hashmap! {
         "aeroway" => Rgb([47, 79, 79]),
         "boundary" => Rgb([107, 142, 35]),
@@ -108,7 +109,9 @@ impl Renderer<TileServerSource> {
             for layer in &vtile.layers {
                 let extent = layer.extent();
 
-                let color = layer_colors.get(layer.name.as_str()).unwrap_or(&Rgb([255,255,255]));
+                let color = layer_colors
+                    .get(layer.name.as_str())
+                    .unwrap_or(&Rgb([255, 255, 255]));
 
                 error!("layer,{}", layer.name);
 

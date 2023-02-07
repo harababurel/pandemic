@@ -1,4 +1,5 @@
 use crate::vector_tile::{self, tile::GeomType};
+use std::f64::consts::PI;
 
 #[derive(Debug)]
 pub struct Tile {
@@ -6,6 +7,14 @@ pub struct Tile {
     // Coordinates in screen space. Top-left is tile (0, 0)
     pub offset: Option<(u32, u32)>,
     pub vtile: Option<vector_tile::Tile>,
+}
+
+#[derive(Debug)]
+pub struct BoundingBox {
+    north: f64,
+    east: f64,
+    south: f64,
+    west: f64,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -70,6 +79,24 @@ impl Tile {
     }
     pub fn decode_parameter_integer(pi: u32) -> i32 {
         (pi as i32 >> 1) ^ (-(pi as i32 & 1))
+    }
+
+    pub fn bounds(&self) -> BoundingBox {
+        BoundingBox {
+            north: Tile::tile2lat(self.y(), self.z()),
+            south: Tile::tile2lat(self.y() + 1, self.z()),
+            west: Tile::tile2lon(self.x(), self.z()),
+            east: Tile::tile2lon(self.x() + 1, self.z()),
+        }
+    }
+
+    fn tile2lon(x: i32, z: usize) -> f64 {
+        x as f64 / 2f64.powf(z as f64) * 360. - 180.
+    }
+
+    fn tile2lat(y: i32, z: usize) -> f64 {
+        let n = PI - (2. * PI * y as f64) / 2f64.powf(z as f64);
+        n.sinh().atan().to_degrees()
     }
 }
 
