@@ -1,3 +1,4 @@
+use crate::tile::BoundingBox;
 use crate::vector_tile;
 use std::f64::consts::PI;
 
@@ -7,18 +8,19 @@ const PROJECT_SIZE: u32 = 256;
 
 #[derive(Debug)]
 pub struct Coords {
-    pub lon: f64,
     pub lat: f64,
+    pub lon: f64,
 }
 
+#[derive(Debug)]
 pub struct TileCoords {
     pub x: u32,
     pub y: u32,
 }
 
 impl Coords {
-    pub fn from_deg(lon: f64, lat: f64) -> Self {
-        Coords { lon, lat }
+    pub fn from_deg(lat: f64, lon: f64) -> Self {
+        Coords { lat, lon }
     }
 }
 
@@ -43,7 +45,7 @@ pub fn tile_to_coords(t: &TileCoords, zoom: f64) -> Coords {
     let lat_rad = (PI * (1. - 2. * t.y as f64 / n)).sinh().atan();
     let lat_deg = lat_rad.to_degrees();
 
-    Coords::from_deg(lon_deg, lat_deg)
+    Coords::from_deg(lat_deg, lon_deg)
 }
 
 // pub fn base_zoom(zoom: f64) -> usize {

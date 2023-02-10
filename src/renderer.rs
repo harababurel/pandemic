@@ -38,7 +38,7 @@ impl Renderer<TileServerSource> {
             zoom: 3,
             tilesource: TileServerSource::new(),
             img: ImageBuffer::new(res.0 as u32, res.1 as u32),
-            rel_zoom: 1.,
+            rel_zoom: 4.,
         }
     }
 
@@ -62,6 +62,7 @@ impl Renderer<TileServerSource> {
         self.clear_img();
 
         let mut tiles: Vec<tile::Tile> = self.visible_tiles();
+        info!("There are {} visible tiles", tiles.len());
 
         tiles.iter_mut().for_each(|ref mut t| {
             t.vtile = self.tilesource.get_tile(t.z(), t.x(), t.y()).unwrap().vtile;
@@ -74,7 +75,7 @@ impl Renderer<TileServerSource> {
         // }
         for t in &tiles {
             self.draw_tile(&t);
-            self.screen_position(&t);
+            info!("Screen position of tile: {:?}", self.screen_position(&t));
         }
         self.img.save("test.png").unwrap();
     }
@@ -266,7 +267,17 @@ impl Renderer<TileServerSource> {
             b, self.center
         );
 
-        (0, 0)
+        let tile_size = 256.0 * self.rel_zoom;
+
+        let (mut tx, mut ty) = (t.x(), t.y());
+
+        let dx = (&self.center.lat - b.w) / (b.e - b.w);
+        let dy = (&self.center.lon - b.s) / (b.n - b.s);
+
+        let px = (self.width as f64 * dx).round() as u32;
+        let py = (self.height as f64 * dy).round() as u32;
+
+        (px, py)
     }
 
     pub fn point_within_bounds(&self, p: (f32, f32)) -> bool {
@@ -300,14 +311,10 @@ impl Renderer<TileServerSource> {
     pub fn visible_tiles(&self) -> Vec<tile::Tile> {
         let center_t = util::coords_to_tile(&self.center, self.zoom as f64);
 
-        let tile_size = 256;
+        let tile_size = 256.0 * self.rel_zoom;
 
-        let uncovered_right = ((self.width - tile_size) as f64
-            / (2. * tile_size as f64 * self.rel_zoom))
-            .ceil() as i32;
-        let uncovered_up =
-            ((self.height - tile_size) as f64 / 2.0 / (tile_size as f64) / self.rel_zoom).ceil()
-                as i32;
+        let uncovered_right = ((self.width as f64 - tile_size) / (2. * tile_size)).ceil() as i32;
+        let uncovered_up = ((self.height as f64 - tile_size) / 2.0 / tile_size).ceil() as i32;
 
         let max_tile = 2i32.pow(self.zoom) - 1;
 
@@ -328,5 +335,20 @@ impl Renderer<TileServerSource> {
         }
 
         tiles
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_screen_pos() {
+
+        // let r = Renderer::new((1920,1080),
+        // for t in tests {
+        //     let (ci, expected) = t;
+        //     assert_eq!(Tile::parse_command_integer(ci), expected);
+        // }
     }
 }

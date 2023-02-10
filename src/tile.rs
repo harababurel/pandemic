@@ -1,7 +1,9 @@
+use crate::util;
 use crate::vector_tile::{self, tile::GeomType};
+use std::collections::HashMap;
 use std::f64::consts::PI;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Tile {
     pub zxy: (usize, i32, i32),
     // Coordinates in screen space. Top-left is tile (0, 0)
@@ -11,10 +13,19 @@ pub struct Tile {
 
 #[derive(Debug)]
 pub struct BoundingBox {
-    north: f64,
-    east: f64,
-    south: f64,
-    west: f64,
+    pub n: f64,
+    pub s: f64,
+    pub e: f64,
+    pub w: f64,
+}
+
+impl BoundingBox {
+    pub fn new(n: f64, s: f64, e: f64, w: f64) -> Self {
+        BoundingBox { n, s, e, w }
+    }
+    pub fn contains(&self, p: util::Coords) -> bool {
+        self.w <= p.lon && p.lon <= self.e && self.s <= p.lat && p.lat <= self.n
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -83,10 +94,10 @@ impl Tile {
 
     pub fn bounds(&self) -> BoundingBox {
         BoundingBox {
-            north: Tile::tile2lat(self.y(), self.z()),
-            south: Tile::tile2lat(self.y() + 1, self.z()),
-            west: Tile::tile2lon(self.x(), self.z()),
-            east: Tile::tile2lon(self.x() + 1, self.z()),
+            n: Tile::tile2lat(self.y(), self.z()),
+            s: Tile::tile2lat(self.y() + 1, self.z()),
+            e: Tile::tile2lon(self.x() + 1, self.z()),
+            w: Tile::tile2lon(self.x(), self.z()),
         }
     }
 
@@ -129,5 +140,99 @@ mod tests {
             GeometryCommand::ClosePath,
         ];
         assert_eq!(Tile::parse_geometry(&geometry), expected_commands);
+    }
+
+    #[test]
+    fn test_tile_bounds() {
+        let eps = 0.1;
+        let tests = vec![((0, 0, 0), BoundingBox::new(85., -85., 180., -180.))];
+
+        for (zxy, b) in tests {
+            let t = Tile {
+                zxy,
+                ..Default::default()
+            };
+
+            for (exp, got, dir) in vec![
+                (b.n, t.bounds().n, "north"),
+                (b.s, t.bounds().s, "south"),
+                (b.e, t.bounds().e, "east"),
+                (b.w, t.bounds().w, "west"),
+            ] {
+                assert!(
+                    (exp - got).abs() < eps,
+                    "Checking {} bound (got: {}, expected: {})",
+                    dir,
+                    got,
+                    exp
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_tile_bounds_cities() {
+        use map_macro::map;
+        let cities = map! {
+            "Paris" => (48.8566, 2.349014),
+            "Lyon" => (45.763420,4.834277),
+            "Barcelona" => (41.3874, 2.1686),
+            "Milan" => (45.4642, 9.1900),
+            "Zurich" => (47.3769, 8.5417),
+            "London" => (51.5072, -0.1276),
+            "New York" => (40.7128, -74.0060),
+            "Sofia" => (42.6977, 23.3219),
+            "Valencia" => (39.4699, 0.3763),
+            "Rome" => (41.9028, 12.4964),
+            "Tokyo" => (35.6762, 139.6503),
+            "Kyoto" =>(35.0116, 135.7681),
+            "Osaka" =>(34.6937, 135.5023),
+            "Nagasaki" =>(32.7503, 129.8779),
+            "Asahi" =>(35.7205, 140.6466),
+            "Fuji" =>(35.3606, 138.7274),
+            "Maebashi" =>(36.3895, 139.0634),
+        };
+
+        let tests = vec![
+            (
+                (5, 16, 11), // covers most of western Europe
+                vec!["Paris", "Lyon", "Barcelona", "Milan", "Zurich"],
+                vec!["London", "New York", "Sofia", "Valencia", "Rome", "Tokyo"],
+            ),
+            (
+                (8, 227, 100), // centered on Tokyo
+                vec!["Tokyo"],
+                vec![
+                    "London", "New York", "Sofia", "Rome", "Paris", "Zurich", "Kyoto", "Osaka",
+                    "Nagasaki", "Fuji", "Maebashi", "Asahi",
+                ],
+            ),
+        ];
+
+        for (zxy, includes, excludes) in tests {
+            let t = Tile {
+                zxy,
+                ..Default::default()
+            };
+
+            assert!(
+                includes.iter().all(|name| t
+                    .bounds()
+                    .contains(util::Coords::from_deg(cities[name].0, cities[name].1))),
+                "Tile {:?} must contain all of these cities within its bounds: {:?}",
+                zxy,
+                includes
+            );
+            assert!(
+                excludes.iter().all(|name| !t
+                    .bounds()
+                    .contains(util::Coords::from_deg(cities[name].0, cities[name].1))),
+                "Tile {:?} must NOT contain any of these cities within its bounds: {:?}",
+                zxy,
+                excludes
+            );
+
+            // panic!("{:?}", util::coords_to_tile(&util::Coords::from_deg(35.6762, 139.6503), 8.))
+        }
     }
 }
