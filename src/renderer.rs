@@ -1,5 +1,5 @@
 use crate::tile::{self, BoundingBox, Tile};
-use crate::tilesource::{TileServerSource, TileSource};
+use crate::tilesource::{CachedTileSource, TileServerSource, TileSource};
 use crate::util;
 use crate::util::Coords;
 use crate::vector_tile;
@@ -19,26 +19,26 @@ macro_rules! hashmap {
     }}
 }
 
-pub struct Renderer<TS: TileSource> {
+pub struct Renderer {
     width: usize,
     height: usize,
     center: Coords,
     pub zoom: u32,
-    tilesource: TS,
+    tilesource: Box<dyn TileSource>,
     img: RgbImage,
     rel_zoom: f64,
 }
 
-impl Renderer<TileServerSource> {
+impl Renderer {
     pub fn new(res: (usize, usize), center: Coords) -> Self {
         Renderer {
             width: res.0,
             height: res.1,
             center,
             zoom: 0,
-            tilesource: TileServerSource::new(),
+            tilesource: Box::new(CachedTileSource::unbounded(TileServerSource::new())),
             img: ImageBuffer::new(res.0 as u32, res.1 as u32),
-            rel_zoom: 4.,
+            rel_zoom: 2.,
         }
     }
 
@@ -354,48 +354,47 @@ impl Renderer<TileServerSource> {
             (self.height as f64 / 2. - tile_screen_size * dy).round() as i32,
         );
 
-        // self.width - tile_screen_size
-        let hcnt = (self.width as f64 / tile_screen_size).ceil();
-        let vcnt = (self.height as f64 / tile_screen_size).ceil();
-
+        let hcnt = 1 + (self.width as f64 / tile_screen_size).ceil() as i32;
+        let vcnt = 1 + (self.height as f64 / tile_screen_size).ceil() as i32;
         info!("dx = {:.2}, dy = {:.2}", dx, dy);
+        info!("hcnt = {}, vcnt = {}", hcnt, vcnt);
 
-        return vec![ct];
-
-        // info!(
-        //     "t.s = {:.2}, self.center.lat = {:.2}, t.n = {:.2} ",
-        //     t.bounds().s,
-        //     self.center.lat,
-        //     t.bounds().n
-        // );
-        // info!(
-        //     "t.w = {:.2}, self.center.lon = {:.2}, t.e = {:.2} ",
-        //     t.bounds().w,
-        //     self.center.lon,
-        //     t.bounds().e
-        // );
-        // info!("dx = {}, dy = {}", dx, dy);
-
-        // let uncovered_right = ((self.width as f64 - tile_size) / (2. * tile_size)).ceil() as i32;
-        // let uncovered_up = ((self.height as f64 - tile_size) / 2.0 / tile_size).ceil() as i32;
-
-        // let max_tile = 2i32.pow(self.zoom) - 1;
+        let modulo = 2i32.pow(self.zoom);
 
         let mut tiles: Vec<tile::Tile> = Vec::new();
-        // for dx in (-uncovered_right)..(uncovered_right + 1) {
-        //     for dy in (-uncovered_up)..(uncovered_up + 1) {
-        //         let tx = center_t.x as i32 + dx;
-        //         let ty = center_t.y as i32 + dy;
+        for i in -vcnt..vcnt + 1 {
+            for j in -hcnt..hcnt + 1 {
+                let mut x = (j + center.x as i32 + 100 * modulo) % modulo;
+                let mut y = (i + center.y as i32 + 100 * modulo) % modulo;
 
-        //         if 0 <= tx && tx <= max_tile && 0 <= ty && ty <= max_tile {
-        //             tiles.push(tile::Tile {
-        //                 zxy: (self.zoom as usize, tx, ty),
-        //                 offset: Some(((dx + uncovered_right) as u32, (dy + uncovered_up) as u32)),
-        //                 vtile: None,
-        //             });
-        //         }
-        //     }
-        // }
+                let mut t = tile::Tile {
+                    zxy: (self.zoom as usize, x, y),
+                    screenpos: (
+                        (self.width as f64 / 2. - tile_screen_size * dx
+                            + j as f64 * tile_screen_size)
+                            .round() as i32,
+                        (self.height as f64 / 2. - tile_screen_size * dy
+                            + i as f64 * tile_screen_size)
+                            .round() as i32,
+                    ),
+                    ..Default::default()
+                };
+
+                let top_l = (t.screenpos.0 as f32, t.screenpos.1 as f32);
+                if [(0, 0), (0, 1), (1, 0), (1, 1)]
+                    .into_iter()
+                    .map(|(i, j)| {
+                        (
+                            top_l.0 + i as f32 * tile_screen_size as f32,
+                            top_l.1 + j as f32 * tile_screen_size as f32,
+                        )
+                    })
+                    .any(|p| self.point_within_bounds(p))
+                {
+                    tiles.push(t);
+                }
+            }
+        }
 
         tiles
     }

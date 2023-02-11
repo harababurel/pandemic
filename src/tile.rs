@@ -3,7 +3,7 @@ use crate::vector_tile::{self, tile::GeomType};
 use std::collections::HashMap;
 use std::f64::consts::PI;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Tile {
     pub zxy: (usize, i32, i32),
     pub offset: Option<(f64, f64)>,
