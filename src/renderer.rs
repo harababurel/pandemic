@@ -1,4 +1,4 @@
-use crate::tile::{self, Tile};
+use crate::tile::{self, BoundingBox, Tile};
 use crate::tilesource::{TileServerSource, TileSource};
 use crate::util;
 use crate::util::Coords;
@@ -35,10 +35,10 @@ impl Renderer<TileServerSource> {
             width: res.0,
             height: res.1,
             center,
-            zoom: 3,
+            zoom: 0,
             tilesource: TileServerSource::new(),
             img: ImageBuffer::new(res.0 as u32, res.1 as u32),
-            rel_zoom: 4.,
+            rel_zoom: 3.,
         }
     }
 
@@ -54,7 +54,7 @@ impl Renderer<TileServerSource> {
 
     pub fn clear_img(&mut self) {
         for (_, _, pixel) in self.img.enumerate_pixels_mut() {
-            *pixel = image::Rgb([0, 0, 0]);
+            *pixel = image::Rgb([255, 255, 255]);
         }
     }
 
@@ -75,19 +75,11 @@ impl Renderer<TileServerSource> {
         // }
         for t in &tiles {
             self.draw_tile(&t);
-            info!("Screen position of tile: {:?}", self.screen_position(&t));
+            // info!("Screen position of tile: {:?}", self.screen_position(&t));
         }
         self.img.save("test.png").unwrap();
     }
     pub fn draw_tile(&mut self, t: &tile::Tile) {
-        let tdx = t.x();
-        let tdy = t.y();
-
-        let ox = t.offset.unwrap().0;
-        let oy = t.offset.unwrap().1;
-
-        debug!("tdx={}, tdy={}", tdx, tdy);
-
         info!("bounding box: {:?}", t.bounds());
         let layer_colors = hashmap! {
             "aeroway" => Rgb([47, 79, 79]),
@@ -107,6 +99,17 @@ impl Renderer<TileServerSource> {
             "waterway" => Rgb([107, 41, 12])
         };
 
+        let tile_screen_size = (256. * self.rel_zoom).round() as i32;
+        for i in 0..tile_screen_size {
+            for j in 0..tile_screen_size {
+                let x = t.screenpos.0 + i;
+                let y = t.screenpos.1 + j;
+                if self.point_within_bounds((x as f32, y as f32)) {
+                    self.img.put_pixel(x as u32, y as u32, Rgb([0, 0, 0]));
+                }
+            }
+        }
+
         if let Some(vtile) = t.vtile.as_ref() {
             for layer in &vtile.layers {
                 let extent = layer.extent();
@@ -115,7 +118,7 @@ impl Renderer<TileServerSource> {
                     .get(layer.name.as_str())
                     .unwrap_or(&Rgb([255, 255, 255]));
 
-                error!("layer,{}", layer.name);
+                info!("layer,{}", layer.name);
 
                 for feature in &layer.features {
                     let mut cursor = (0, 0);
@@ -155,9 +158,7 @@ impl Renderer<TileServerSource> {
                                     }
                                     tile::GeometryCommand::LineTo(dx, dy) => {
                                         let nc = (cursor.0 + dx, cursor.1 + dy);
-                                        self.draw_line_on_img(
-                                            cursor, nc, extent, tdx, tdy, ox, oy, *color,
-                                        );
+                                        self.draw_line_on_img(t, cursor, nc, extent, *color);
                                         cursor = nc;
                                     }
                                     _ => {
@@ -180,21 +181,16 @@ impl Renderer<TileServerSource> {
                                         if (nc.0 - cursor.0).abs() > 0
                                             && (nc.1 - cursor.1).abs() > 0
                                         {
-                                            self.draw_line_on_img(
-                                                cursor, nc, extent, tdx, tdy, ox, oy, *color,
-                                            );
+                                            self.draw_line_on_img(t, cursor, nc, extent, *color);
                                         }
                                         cursor = nc;
                                     }
                                     tile::GeometryCommand::ClosePath => {
                                         self.draw_line_on_img(
+                                            t,
                                             cursor,
                                             polygon_start,
                                             extent,
-                                            tdx,
-                                            tdy,
-                                            ox,
-                                            oy,
                                             *color,
                                         );
                                         // unimplemented!("moveto");
@@ -203,6 +199,19 @@ impl Renderer<TileServerSource> {
                             }
                         }
                     }
+                }
+            }
+        }
+
+        let radius = 5i32;
+        for i in -radius..radius {
+            for j in -radius..radius {
+                if i.abs() + j.abs() <= radius {
+                    self.img.put_pixel(
+                        self.width as u32 / 2 + i as u32,
+                        self.height as u32 / 2 + j as u32,
+                        Rgb([255, 0, 0]),
+                    );
                 }
             }
         }
@@ -229,23 +238,36 @@ impl Renderer<TileServerSource> {
 
     pub fn draw_line_on_img(
         &mut self,
+        t: &Tile,
         p: (i32, i32),
         q: (i32, i32),
         extent: u32,
-        tdx: i32,
-        tdy: i32,
-        ox: u32,
-        oy: u32,
         color: Rgb<u8>,
     ) {
+        let base_size = 256.;
+
         let from = (
-            ((256 * ox) as f32 + p.0 as f32 * (256. / extent as f32)) * self.rel_zoom as f32,
-            ((256 * oy) as f32 + p.1 as f32 * (256. / extent as f32)) * self.rel_zoom as f32,
+            t.screenpos.0 as f32 + p.0 as f32 * base_size / extent as f32 * self.rel_zoom as f32,
+            t.screenpos.1 as f32 + p.1 as f32 * base_size / extent as f32 * self.rel_zoom as f32,
         );
+
         let to = (
-            ((256 * ox) as f32 + q.0 as f32 * (256. / extent as f32)) * self.rel_zoom as f32,
-            ((256 * oy) as f32 + q.1 as f32 * (256. / extent as f32)) * self.rel_zoom as f32,
+            t.screenpos.0 as f32 + q.0 as f32 * base_size / extent as f32 * self.rel_zoom as f32,
+            t.screenpos.1 as f32 + q.1 as f32 * base_size / extent as f32 * self.rel_zoom as f32,
         );
+
+        // let from = (
+        //     ((256 * t.row.unwrap_or_default()) as f32 + p.0 as f32 * (256. / extent as f32))
+        //         * self.rel_zoom as f32,
+        //     ((256 * t.col.unwrap_or_default()) as f32 + p.1 as f32 * (256. / extent as f32))
+        //         * self.rel_zoom as f32,
+        // );
+        // let to = (
+        //     ((256 * t.row.unwrap_or_default()) as f32 + q.0 as f32 * (256. / extent as f32))
+        //         * self.rel_zoom as f32,
+        //     ((256 * t.col.unwrap_or_default()) as f32 + q.1 as f32 * (256. / extent as f32))
+        //         * self.rel_zoom as f32,
+        // );
 
         if self.point_within_bounds(from) && self.point_within_bounds(to) {
             imageproc::drawing::draw_line_segment_mut(
@@ -259,29 +281,31 @@ impl Renderer<TileServerSource> {
 
     // Pixel coordinates of the top-left corner of a given tile, such that self.center is rendered
     // exactly at the center of the canvas.
-    pub fn screen_position(&self, t: &Tile) -> (u32, u32) {
-        let b = t.bounds();
+    // pub fn screen_position(&self, t: &Tile) -> (u32, u32) {
+    //     let b = t.bounds();
 
-        info!(
-            "Tile bounds are {:?}, renderer is centered on {:?}",
-            b, self.center
-        );
+    //     info!(
+    //         "Tile bounds are {:?}, renderer is centered on {:?}",
+    //         b, self.center
+    //     );
 
-        let tile_size = 256.0 * self.rel_zoom;
+    //     let tile_size = 256.0 * self.rel_zoom;
 
-        let (mut tx, mut ty) = (t.x(), t.y());
+    //     let (mut tx, mut ty) = (t.x(), t.y());
 
-        let dx = (&self.center.lat - b.w) / (b.e - b.w);
-        let dy = (&self.center.lon - b.s) / (b.n - b.s);
+    //     let dx = (&self.center.lat - b.w) / (b.e - b.w);
+    //     let dy = (&self.center.lon - b.s) / (b.n - b.s);
 
-        let px = (self.width as f64 * dx).round() as u32;
-        let py = (self.height as f64 * dy).round() as u32;
+    //     let px = (self.width as f64 * dx).round() as u32;
+    //     let py = (self.height as f64 * dy).round() as u32;
 
-        (px, py)
-    }
+    //     (px, py)
+    // }
 
     pub fn point_within_bounds(&self, p: (f32, f32)) -> bool {
-        0. <= p.0 && p.0 < self.width as f32 && 0. <= p.1 && p.1 < self.height as f32
+        let x = p.0.round() as i32;
+        let y = p.1.round() as i32;
+        0 <= x && x < self.width as i32 && 0 <= y && y < self.height as i32
     }
 
     pub fn generate_draw_order(zoom: f64) -> Vec<String> {
@@ -309,30 +333,66 @@ impl Renderer<TileServerSource> {
     }
 
     pub fn visible_tiles(&self) -> Vec<tile::Tile> {
-        let center_t = util::coords_to_tile(&self.center, self.zoom as f64);
+        let center = util::coords_to_tile(&self.center, self.zoom as f64);
 
-        let tile_size = 256.0 * self.rel_zoom;
+        let tile_screen_size = 256.0 * self.rel_zoom;
 
-        let uncovered_right = ((self.width as f64 - tile_size) / (2. * tile_size)).ceil() as i32;
-        let uncovered_up = ((self.height as f64 - tile_size) / 2.0 / tile_size).ceil() as i32;
+        // center tile
+        let mut ct = tile::Tile {
+            zxy: (self.zoom as usize, center.x as i32, center.y as i32),
+            ..Default::default()
+        };
 
-        let max_tile = 2i32.pow(self.zoom) - 1;
+        // self.width - tile_screen_size
+        let hcnt = (self.width as f64 / tile_screen_size).ceil();
+        let vcnt = (self.height as f64 / tile_screen_size).ceil();
+
+        let dx = (self.center.lon - ct.bounds().w) / (ct.bounds().e - ct.bounds().w);
+        let dy = (self.center.lat - ct.bounds().s) / (ct.bounds().n - ct.bounds().s);
+
+        info!("dx = {:.2}, dy = {:.2}", dx, dy);
+
+        ct.screenpos = (
+            (self.width as f64 / 2. - tile_screen_size * dx).round() as i32,
+            (self.height as f64 / 2. - tile_screen_size * (1. - dy)).round() as i32,
+        );
+
+        return vec![ct];
+
+        // info!(
+        //     "t.s = {:.2}, self.center.lat = {:.2}, t.n = {:.2} ",
+        //     t.bounds().s,
+        //     self.center.lat,
+        //     t.bounds().n
+        // );
+        // info!(
+        //     "t.w = {:.2}, self.center.lon = {:.2}, t.e = {:.2} ",
+        //     t.bounds().w,
+        //     self.center.lon,
+        //     t.bounds().e
+        // );
+        // info!("dx = {}, dy = {}", dx, dy);
+
+        // let uncovered_right = ((self.width as f64 - tile_size) / (2. * tile_size)).ceil() as i32;
+        // let uncovered_up = ((self.height as f64 - tile_size) / 2.0 / tile_size).ceil() as i32;
+
+        // let max_tile = 2i32.pow(self.zoom) - 1;
 
         let mut tiles: Vec<tile::Tile> = Vec::new();
-        for dx in (-uncovered_right)..(uncovered_right + 1) {
-            for dy in (-uncovered_up)..(uncovered_up + 1) {
-                let tx = center_t.x as i32 + dx;
-                let ty = center_t.y as i32 + dy;
+        // for dx in (-uncovered_right)..(uncovered_right + 1) {
+        //     for dy in (-uncovered_up)..(uncovered_up + 1) {
+        //         let tx = center_t.x as i32 + dx;
+        //         let ty = center_t.y as i32 + dy;
 
-                if 0 <= tx && tx <= max_tile && 0 <= ty && ty <= max_tile {
-                    tiles.push(tile::Tile {
-                        zxy: (self.zoom as usize, tx, ty),
-                        offset: Some(((dx + uncovered_right) as u32, (dy + uncovered_up) as u32)),
-                        vtile: None,
-                    });
-                }
-            }
-        }
+        //         if 0 <= tx && tx <= max_tile && 0 <= ty && ty <= max_tile {
+        //             tiles.push(tile::Tile {
+        //                 zxy: (self.zoom as usize, tx, ty),
+        //                 offset: Some(((dx + uncovered_right) as u32, (dy + uncovered_up) as u32)),
+        //                 vtile: None,
+        //             });
+        //         }
+        //     }
+        // }
 
         tiles
     }

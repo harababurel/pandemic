@@ -18,9 +18,13 @@ use std::io::prelude::*;
 struct Cli {
     #[clap(long, default_value_t = String::from("http://harababurel.com:8080"))]
     tileserver: String,
-    #[clap(long, default_value_t = 8.55)]
+    // #[clap(long, default_value_t = 8.55)]
+    // lon: f64,
+    // #[clap(long, default_value_t = 47.3667)]
+    // lat: f64,
+    #[clap(long, default_value_t = -74.)]
     lon: f64,
-    #[clap(long, default_value_t = 47.3667)]
+    #[clap(long, default_value_t = 40.71)]
     lat: f64,
 }
 
@@ -75,7 +79,7 @@ fn main() {
     // info!("Decoded x = {:#?}", &x);
     // info!("Raw size: {}", buf.len());
 
-    let center = pandemic::util::Coords::from_deg(args.lon, args.lat);
+    let center = pandemic::util::Coords::from_deg(args.lat, args.lon);
 
     let mut renderer = pandemic::renderer::Renderer::new((1920, 1080), center);
 

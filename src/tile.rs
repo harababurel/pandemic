@@ -6,8 +6,10 @@ use std::f64::consts::PI;
 #[derive(Debug, Default)]
 pub struct Tile {
     pub zxy: (usize, i32, i32),
-    // Coordinates in screen space. Top-left is tile (0, 0)
-    pub offset: Option<(u32, u32)>,
+    pub offset: Option<(f64, f64)>,
+    pub row: Option<i32>,
+    pub col: Option<i32>,
+    pub screenpos: (i32, i32),
     pub vtile: Option<vector_tile::Tile>,
 }
 
@@ -39,8 +41,8 @@ impl Tile {
     pub fn from_proto(x: i32, y: i32, z: usize, vtile: vector_tile::Tile) -> Self {
         Tile {
             zxy: (z, x, y),
-            offset: None,
             vtile: Some(vtile),
+            ..Default::default()
         }
     }
 
@@ -231,8 +233,6 @@ mod tests {
                 zxy,
                 excludes
             );
-
-            // panic!("{:?}", util::coords_to_tile(&util::Coords::from_deg(35.6762, 139.6503), 8.))
         }
     }
 }
