@@ -38,7 +38,7 @@ impl Renderer<TileServerSource> {
             zoom: 0,
             tilesource: TileServerSource::new(),
             img: ImageBuffer::new(res.0 as u32, res.1 as u32),
-            rel_zoom: 3.,
+            rel_zoom: 4.,
         }
     }
 
@@ -210,7 +210,7 @@ impl Renderer<TileServerSource> {
                     self.img.put_pixel(
                         self.width as u32 / 2 + i as u32,
                         self.height as u32 / 2 + j as u32,
-                        Rgb([255, 0, 0]),
+                        Rgb([0, 255, 0]),
                     );
                 }
             }
@@ -336,6 +336,8 @@ impl Renderer<TileServerSource> {
         let center = util::coords_to_tile(&self.center, self.zoom as f64);
 
         let tile_screen_size = 256.0 * self.rel_zoom;
+        let lon = self.center.lon;
+        let lat = self.center.lat;
 
         // center tile
         let mut ct = tile::Tile {
@@ -343,19 +345,20 @@ impl Renderer<TileServerSource> {
             ..Default::default()
         };
 
+        let dx = (lon - ct.bounds().w) / (ct.bounds().e - ct.bounds().w);
+        let dy = ((1. - ((lat * PI / 180.).tan() + 1. / (lat * PI / 180.).cos()).ln() / PI) / 2.
+            * 2f64.powf(self.zoom as f64))
+        .fract();
+        ct.screenpos = (
+            (self.width as f64 / 2. - tile_screen_size * dx).round() as i32,
+            (self.height as f64 / 2. - tile_screen_size * dy).round() as i32,
+        );
+
         // self.width - tile_screen_size
         let hcnt = (self.width as f64 / tile_screen_size).ceil();
         let vcnt = (self.height as f64 / tile_screen_size).ceil();
 
-        let dx = (self.center.lon - ct.bounds().w) / (ct.bounds().e - ct.bounds().w);
-        let dy = (self.center.lat - ct.bounds().s) / (ct.bounds().n - ct.bounds().s);
-
         info!("dx = {:.2}, dy = {:.2}", dx, dy);
-
-        ct.screenpos = (
-            (self.width as f64 / 2. - tile_screen_size * dx).round() as i32,
-            (self.height as f64 / 2. - tile_screen_size * (1. - dy)).round() as i32,
-        );
 
         return vec![ct];
 
