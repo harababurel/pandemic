@@ -81,18 +81,20 @@ fn main() {
 
     let center = pandemic::util::Coords::from_deg(args.lat, args.lon);
 
-    let mut renderer = pandemic::renderer::Renderer::new((3840, 2160), center);
+    let mut renderer = pandemic::renderer::Renderer::new((1920, 1080), center);
 
     let window = initscr();
     loop {
-
         window.printw(format!("Center: {:?}\n", renderer.center));
         window.printw(format!("Zoom: {}\n", renderer.zoom));
-        window.printw(format!("Tolerance: {:.2}\n", renderer.tolerance));
-        window.printw(format!(
-            "High Quality Simplification: {}\n",
-            renderer.high_quality
-        ));
+        window.printw(format!("Simplify: {}\n", renderer.simplify));
+        if renderer.simplify {
+            window.printw(format!("Tolerance: {:.2}\n", renderer.tolerance));
+            window.printw(format!(
+                "High Quality Simplification: {}\n",
+                renderer.high_quality
+            ));
+        }
         renderer.draw();
 
         match window.getch() {
@@ -110,6 +112,9 @@ fn main() {
             }
             Some(Input::Character('g')) => {
                 renderer.high_quality = !renderer.high_quality;
+            }
+            Some(Input::Character('s')) => {
+                renderer.simplify = !renderer.simplify;
             }
             Some(Input::Character('l')) => {
                 renderer.pan_right();

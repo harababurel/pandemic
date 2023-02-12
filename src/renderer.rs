@@ -3,6 +3,7 @@ use crate::tilesource::{CachedTileSource, TileServerSource, TileSource};
 use crate::util;
 use crate::util::Coords;
 use crate::vector_tile;
+use crate::vector_tile::tile::GeomType;
 use image::{GenericImage, GenericImageView, ImageBuffer, Rgb, RgbImage};
 use rand::{thread_rng, Rng};
 use simplify_polyline as sp;
@@ -28,6 +29,7 @@ pub struct Renderer {
     tilesource: Box<dyn TileSource>,
     img: RgbImage,
     rel_zoom: f64,
+    pub simplify: bool,
     pub tolerance: f64,
     pub high_quality: bool,
 }
@@ -42,7 +44,8 @@ impl Renderer {
             tilesource: Box::new(CachedTileSource::unbounded(TileServerSource::new())),
             img: ImageBuffer::new(res.0 as u32, res.1 as u32),
             rel_zoom: 4.,
-            tolerance: 0.1,
+            simplify: false,
+            tolerance: 1.,
             high_quality: false,
         }
     }
@@ -134,10 +137,10 @@ impl Renderer {
                     // println!("Commands: {:?}", commands);
 
                     match feature.r#type() {
-                        vector_tile::tile::GeomType::Unknown => {
+                        GeomType::Unknown => {
                             panic!("Found unknown geometry, don't know how to interpret this");
                         }
-                        vector_tile::tile::GeomType::Point => {
+                        GeomType::Point => {
                             let mut cursor = (0, 0);
                             for c in commands {
                                 match c {
@@ -159,7 +162,7 @@ impl Renderer {
                                 };
                             }
                         }
-                        vector_tile::tile::GeomType::Linestring => {
+                        GeomType::Linestring | GeomType::Polygon => {
                             let mut lines: Vec<Vec<sp::Point<f32>>> = self
                                 .commands_to_polylines(&commands)
                                 .into_iter()
@@ -170,57 +173,23 @@ impl Renderer {
                                 })
                                 .collect();
 
-                            for i in 0..lines.len() {
-                                let before = lines[i].len();
-                                lines[i] = sp::simplify(&lines[i], self.tolerance, false);
-                                let after = lines[i].len();
+                            if self.simplify {
+                                for i in 0..lines.len() {
+                                    let before = lines[i].len();
+                                    lines[i] = sp::simplify(&lines[i], self.tolerance, false);
+                                    let after = lines[i].len();
 
-                                info!("Simplified from {} points to {} points", before, after);
+                                    info!("Simplified from {} points to {} points", before, after);
+                                }
                             }
 
                             lines.iter().for_each(|line| {
-                                for i in 0..line.len() - 1 {
-                                    let p = (line[i].x.round() as i32, line[i].y.round() as i32);
-                                    let q = (
-                                        line[i + 1].x.round() as i32,
-                                        line[i + 1].y.round() as i32,
-                                    );
+                                line.iter().zip(line.iter().skip(1)).for_each(|(p, q)| {
+                                    let p = (p.x.round() as i32, p.y.round() as i32);
+                                    let q = (q.x.round() as i32, q.y.round() as i32);
                                     self.draw_line_on_img(t, p, q, extent, *color);
-                                }
+                                });
                             });
-                        }
-                        vector_tile::tile::GeomType::Polygon => {
-                            // let mut points = vec![sp::Point(0, 0)]
-                            let mut polygon_start = (0, 0);
-                            let mut cursor = (0, 0);
-                            for c in commands {
-                                match c {
-                                    tile::GeometryCommand::MoveTo(dx, dy) => {
-                                        cursor = (cursor.0 + dx, cursor.1 + dy);
-                                        polygon_start = cursor;
-                                    }
-                                    tile::GeometryCommand::LineTo(dx, dy) => {
-                                        let nc = (cursor.0 + dx, cursor.1 + dy);
-
-                                        if (nc.0 - cursor.0).abs() > 0
-                                            && (nc.1 - cursor.1).abs() > 0
-                                        {
-                                            // self.draw_line_on_img(t, cursor, nc, extent, *color);
-                                        }
-                                        cursor = nc;
-                                    }
-                                    tile::GeometryCommand::ClosePath => {
-                                        // self.draw_line_on_img(
-                                        //     t,
-                                        //     cursor,
-                                        //     polygon_start,
-                                        //     extent,
-                                        //     *color,
-                                        // );
-                                        // unimplemented!("moveto");
-                                    }
-                                }
-                            }
                         }
                     }
                 }
@@ -258,17 +227,14 @@ impl Renderer {
                     line = Vec::new();
                 }
                 tile::GeometryCommand::LineTo(dx, dy) => {
-                    let nc = (cursor.0 + dx, cursor.1 + dy);
-
                     if line.is_empty() || line.last().unwrap() != &cursor {
                         line.push(cursor);
                     }
-                    line.push(nc);
-                    // self.draw_line_on_img(t, cursor, nc, extent, *color);
-                    cursor = nc;
+                    cursor = (cursor.0 + dx, cursor.1 + dy);
+                    line.push(cursor);
                 }
-                _ => {
-                    panic!("LineString geometry can only contain MoveTo or LineTo commands");
+                tile::GeometryCommand::ClosePath => {
+                    // line.push(line[0]);
                 }
             }
         }
