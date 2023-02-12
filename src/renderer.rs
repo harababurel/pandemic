@@ -175,7 +175,7 @@ impl Renderer {
                                 lines[i] = sp::simplify(&lines[i], self.tolerance, false);
                                 let after = lines[i].len();
 
-                                info!("Simplified from {} lines to {} lines", before, after);
+                                info!("Simplified from {} points to {} points", before, after);
                             }
 
                             lines.iter().for_each(|line| {
