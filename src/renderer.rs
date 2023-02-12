@@ -141,26 +141,26 @@ impl Renderer {
                             panic!("Found unknown geometry, don't know how to interpret this");
                         }
                         GeomType::Point => {
-                            let mut cursor = (0, 0);
-                            for c in commands {
-                                match c {
-                                    tile::GeometryCommand::MoveTo(dx, dy) => {
-                                        let nc = (cursor.0 + dx, cursor.1 + dy);
+                            // let mut cursor = (0, 0);
+                            // for c in commands {
+                            //     match c {
+                            //         tile::GeometryCommand::MoveTo(dx, dy) => {
+                            //             let nc = (cursor.0 + dx, cursor.1 + dy);
 
-                                        if self.point_within_bounds(nc) {
-                                            self.img.put_pixel(
-                                                nc.0 as u32,
-                                                nc.1 as u32,
-                                                Rgb([255, 255, 255]),
-                                            );
-                                        }
-                                        cursor = nc;
-                                    }
-                                    _ => {
-                                        panic!("Point geometry can only contain MoveTo commands");
-                                    }
-                                };
-                            }
+                            //             if self.point_within_bounds(nc) {
+                            //                 self.img.put_pixel(
+                            //                     nc.0 as u32,
+                            //                     nc.1 as u32,
+                            //                     Rgb([255, 255, 255]),
+                            //                 );
+                            //             }
+                            //             cursor = nc;
+                            //         }
+                            //         _ => {
+                            //             panic!("Point geometry can only contain MoveTo commands");
+                            //         }
+                            //     };
+                            // }
                         }
                         GeomType::Linestring | GeomType::Polygon => {
                             let mut lines: Vec<Vec<sp::Point<f32>>> = self
@@ -285,14 +285,12 @@ impl Renderer {
         extent: u32,
         color: Rgb<u8>,
     ) {
-        // let base_size = 256.;
-
-        // let from = self.tile_point_to_screen_space(t, p, extent);
-        // let to = self.tile_point_to_screen_space(t, q, extent);
-
         let fp = (p.0 as f32, p.1 as f32);
         let fq = (q.0 as f32, q.1 as f32);
-        if self.point_within_bounds(p) && self.point_within_bounds(q) {
+        if self.point_within_bounds(p)
+            && self.point_within_bounds(q)
+            && (self.point_within_tile_bounds(t, p) || self.point_within_tile_bounds(t, q))
+        {
             imageproc::drawing::draw_line_segment_mut(&mut self.img, fp, fq, color);
         }
     }
@@ -323,6 +321,16 @@ impl Renderer {
     pub fn point_within_bounds(&self, p: (i32, i32)) -> bool {
         let (x, y) = p;
         0 <= x && x < self.width as i32 && 0 <= y && y < self.height as i32
+    }
+
+    pub fn point_within_tile_bounds(&self, t: &Tile, p: (i32, i32)) -> bool {
+        let (x, y) = p;
+        let tile_screen_size = (256. * self.rel_zoom).round() as i32;
+
+        t.screenpos.0 < x
+            && x < t.screenpos.0 + tile_screen_size
+            && t.screenpos.1 < y
+            && y < t.screenpos.1 + tile_screen_size
     }
 
     pub fn generate_draw_order(zoom: f64) -> Vec<String> {
