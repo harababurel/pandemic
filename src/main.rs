@@ -72,16 +72,10 @@ fn main() {
         info!("{:?}", action);
     }
 
-    // let t = pandemic::util::coords_to_tile(&center, zoom as f64);
-    // let (x, y) = (t.x, t.y);
-    // info!("Initial tile: z={zoom}, x={x}, y={y}");
-    // let x = pandemic::vector_tile::Tile::decode(&mut std::io::Cursor::new(buf.clone())).unwrap();
-    // info!("Decoded x = {:#?}", &x);
-    // info!("Raw size: {}", buf.len());
-
     let center = pandemic::util::Coords::from_deg(args.lat, args.lon);
 
-    let mut renderer = pandemic::renderer::Renderer::new((1920, 1080), center);
+    // let mut renderer = pandemic::renderer::Renderer::new((281*3, 69*5), center);
+    let mut renderer = pandemic::renderer::Renderer::new((1280, 720), center);
 
     let window = initscr();
     loop {
@@ -121,6 +115,12 @@ fn main() {
             }
             Some(Input::Character('h')) => {
                 renderer.pan_left();
+            }
+            Some(Input::Character('j')) => {
+                renderer.pan_down();
+            }
+            Some(Input::Character('k')) => {
+                renderer.pan_up();
             }
             Some(Input::Character('q')) => {
                 endwin();

@@ -43,7 +43,7 @@ impl Renderer {
             zoom: 0,
             tilesource: Box::new(CachedTileSource::unbounded(TileServerSource::new())),
             img: ImageBuffer::new(res.0 as u32, res.1 as u32),
-            rel_zoom: 4.,
+            rel_zoom: 3.,
             simplify: false,
             tolerance: 1.,
             high_quality: false,
@@ -66,6 +66,14 @@ impl Renderer {
 
     pub fn pan_left(&mut self) {
         self.center.lon -= 10.;
+    }
+
+    pub fn pan_up(&mut self) {
+        self.center.lat = (self.center.lat + 10.).min(80.);
+    }
+
+    pub fn pan_down(&mut self) {
+        self.center.lat = (self.center.lat - 10.).max(-80.);
     }
 
     pub fn clear_img(&mut self) {
@@ -134,33 +142,35 @@ impl Renderer {
 
                 for feature in &layer.features {
                     let commands = tile::Tile::parse_geometry(&feature.geometry);
-                    // println!("Commands: {:?}", commands);
 
                     match feature.r#type() {
                         GeomType::Unknown => {
                             panic!("Found unknown geometry, don't know how to interpret this");
                         }
                         GeomType::Point => {
-                            // let mut cursor = (0, 0);
-                            // for c in commands {
-                            //     match c {
-                            //         tile::GeometryCommand::MoveTo(dx, dy) => {
-                            //             let nc = (cursor.0 + dx, cursor.1 + dy);
+                            let mut cursor = (0, 0);
+                            for c in commands {
+                                match c {
+                                    tile::GeometryCommand::MoveTo(dx, dy) => {
+                                        let nc = (cursor.0 + dx, cursor.1 + dy);
 
-                            //             if self.point_within_bounds(nc) {
-                            //                 self.img.put_pixel(
-                            //                     nc.0 as u32,
-                            //                     nc.1 as u32,
-                            //                     Rgb([255, 255, 255]),
-                            //                 );
-                            //             }
-                            //             cursor = nc;
-                            //         }
-                            //         _ => {
-                            //             panic!("Point geometry can only contain MoveTo commands");
-                            //         }
-                            //     };
-                            // }
+                                        let p = self.tile_point_to_screen_space(t, nc, extent);
+                                        let p = (p.x.round() as i32, p.y.round() as i32);
+
+                                        if self.point_within_bounds(p) {
+                                            self.img.put_pixel(
+                                                p.0 as u32,
+                                                p.1 as u32,
+                                                Rgb([255, 255, 255]),
+                                            );
+                                        }
+                                        cursor = nc;
+                                    }
+                                    _ => {
+                                        panic!("Point geometry can only contain MoveTo commands");
+                                    }
+                                };
+                            }
                         }
                         GeomType::Linestring | GeomType::Polygon => {
                             let mut lines: Vec<Vec<sp::Point<f32>>> = self
@@ -196,18 +206,19 @@ impl Renderer {
             }
         }
 
-        let radius = 5i32;
-        for i in -radius..radius {
-            for j in -radius..radius {
-                if i.abs() + j.abs() <= radius {
-                    self.img.put_pixel(
-                        self.width as u32 / 2 + i as u32,
-                        self.height as u32 / 2 + j as u32,
-                        Rgb([0, 255, 0]),
-                    );
-                }
-            }
-        }
+        // Draw screen center
+        // let radius = 5i32;
+        // for i in -radius..radius {
+        //     for j in -radius..radius {
+        //         if i.abs() + j.abs() <= radius {
+        //             self.img.put_pixel(
+        //                 self.width as u32 / 2 + i as u32,
+        //                 self.height as u32 / 2 + j as u32,
+        //                 Rgb([0, 255, 0]),
+        //             );
+        //         }
+        //     }
+        // }
     }
 
     // Each vec of points represents a polyline. There are potentially multiple polylines.
@@ -295,29 +306,6 @@ impl Renderer {
         }
     }
 
-    // Pixel coordinates of the top-left corner of a given tile, such that self.center is rendered
-    // exactly at the center of the canvas.
-    // pub fn screen_position(&self, t: &Tile) -> (u32, u32) {
-    //     let b = t.bounds();
-
-    //     info!(
-    //         "Tile bounds are {:?}, renderer is centered on {:?}",
-    //         b, self.center
-    //     );
-
-    //     let tile_size = 256.0 * self.rel_zoom;
-
-    //     let (mut tx, mut ty) = (t.x(), t.y());
-
-    //     let dx = (&self.center.lat - b.w) / (b.e - b.w);
-    //     let dy = (&self.center.lon - b.s) / (b.n - b.s);
-
-    //     let px = (self.width as f64 * dx).round() as u32;
-    //     let py = (self.height as f64 * dy).round() as u32;
-
-    //     (px, py)
-    // }
-
     pub fn point_within_bounds(&self, p: (i32, i32)) -> bool {
         let (x, y) = p;
         0 <= x && x < self.width as i32 && 0 <= y && y < self.height as i32
@@ -326,7 +314,6 @@ impl Renderer {
     pub fn point_within_tile_bounds(&self, t: &Tile, p: (i32, i32)) -> bool {
         let (x, y) = p;
         let tile_screen_size = (256. * self.rel_zoom).round() as i32;
-
         t.screenpos.0 < x
             && x < t.screenpos.0 + tile_screen_size
             && t.screenpos.1 < y
@@ -389,8 +376,8 @@ impl Renderer {
         let mut tiles: Vec<tile::Tile> = Vec::new();
         for i in -vcnt..vcnt + 1 {
             for j in -hcnt..hcnt + 1 {
-                let mut x = (j + center.x as i32 + 100 * modulo) % modulo;
-                let mut y = (i + center.y as i32 + 100 * modulo) % modulo;
+                let mut x = (j + center.x as i32) % modulo;
+                let mut y = (i + center.y as i32) % modulo;
 
                 let mut t = tile::Tile {
                     zxy: (self.zoom as usize, x, y),

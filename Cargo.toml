@@ -11,6 +11,7 @@ edition = "2021"
 # miniquad = "0.3.15"
 clap = { version = "4.1", features = ["derive"] }
 colored = "2"
+drawille = "0.3.0"
 image = "0.24"
 imageproc = "*"
 log = "0.4"
