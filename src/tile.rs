@@ -6,9 +6,6 @@ use std::f64::consts::PI;
 #[derive(Debug, Default, Clone)]
 pub struct Tile {
     pub zxy: (usize, i32, i32),
-    pub offset: Option<(f64, f64)>,
-    pub row: Option<i32>,
-    pub col: Option<i32>,
     pub screenpos: (i32, i32),
     pub vtile: Option<vector_tile::Tile>,
 }

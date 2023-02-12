@@ -16,3 +16,4 @@ Cargo.lock
 /Cargo.lock
 
 test.png
+.DS_Store

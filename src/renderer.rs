@@ -1,10 +1,11 @@
-use crate::tile::{self, BoundingBox, Tile};
+use crate::tile::{self, BoundingBox, GeometryCommand, Tile};
 use crate::tilesource::{CachedTileSource, TileServerSource, TileSource};
 use crate::util;
 use crate::util::Coords;
 use crate::vector_tile;
 use image::{GenericImage, GenericImageView, ImageBuffer, Rgb, RgbImage};
 use rand::{thread_rng, Rng};
+use simplify_polyline as sp;
 use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
 
@@ -22,11 +23,13 @@ macro_rules! hashmap {
 pub struct Renderer {
     width: usize,
     height: usize,
-    center: Coords,
+    pub center: Coords,
     pub zoom: u32,
     tilesource: Box<dyn TileSource>,
     img: RgbImage,
     rel_zoom: f64,
+    pub tolerance: f64,
+    pub high_quality: bool,
 }
 
 impl Renderer {
@@ -38,7 +41,9 @@ impl Renderer {
             zoom: 0,
             tilesource: Box::new(CachedTileSource::unbounded(TileServerSource::new())),
             img: ImageBuffer::new(res.0 as u32, res.1 as u32),
-            rel_zoom: 2.,
+            rel_zoom: 4.,
+            tolerance: 0.1,
+            high_quality: false,
         }
     }
 
@@ -52,6 +57,14 @@ impl Renderer {
         }
     }
 
+    pub fn pan_right(&mut self) {
+        self.center.lon += 10.;
+    }
+
+    pub fn pan_left(&mut self) {
+        self.center.lon -= 10.;
+    }
+
     pub fn clear_img(&mut self) {
         for (_, _, pixel) in self.img.enumerate_pixels_mut() {
             *pixel = image::Rgb([255, 255, 255]);
@@ -63,10 +76,6 @@ impl Renderer {
 
         let mut tiles: Vec<tile::Tile> = self.visible_tiles();
         info!("There are {} visible tiles", tiles.len());
-
-        tiles.iter_mut().for_each(|ref mut t| {
-            t.vtile = self.tilesource.get_tile(t.z(), t.x(), t.y()).unwrap().vtile;
-        });
 
         // for (x, y, pixel) in self.img.enumerate_pixels_mut() {
         //     let r = (100.0 + 0.2 * x as f32) as u8;
@@ -104,7 +113,7 @@ impl Renderer {
             for j in 0..tile_screen_size {
                 let x = t.screenpos.0 + i;
                 let y = t.screenpos.1 + j;
-                if self.point_within_bounds((x as f32, y as f32)) {
+                if self.point_within_bounds((x, y)) {
                     self.img.put_pixel(x as u32, y as u32, Rgb([0, 0, 0]));
                 }
             }
@@ -121,7 +130,6 @@ impl Renderer {
                 info!("layer,{}", layer.name);
 
                 for feature in &layer.features {
-                    let mut cursor = (0, 0);
                     let commands = tile::Tile::parse_geometry(&feature.geometry);
                     // println!("Commands: {:?}", commands);
 
@@ -130,12 +138,13 @@ impl Renderer {
                             panic!("Found unknown geometry, don't know how to interpret this");
                         }
                         vector_tile::tile::GeomType::Point => {
+                            let mut cursor = (0, 0);
                             for c in commands {
                                 match c {
                                     tile::GeometryCommand::MoveTo(dx, dy) => {
                                         let nc = (cursor.0 + dx, cursor.1 + dy);
 
-                                        if self.point_within_bounds((nc.0 as f32, nc.1 as f32)) {
+                                        if self.point_within_bounds(nc) {
                                             self.img.put_pixel(
                                                 nc.0 as u32,
                                                 nc.1 as u32,
@@ -151,24 +160,39 @@ impl Renderer {
                             }
                         }
                         vector_tile::tile::GeomType::Linestring => {
-                            for c in commands {
-                                match c {
-                                    tile::GeometryCommand::MoveTo(dx, dy) => {
-                                        cursor = (cursor.0 + dx, cursor.1 + dy);
-                                    }
-                                    tile::GeometryCommand::LineTo(dx, dy) => {
-                                        let nc = (cursor.0 + dx, cursor.1 + dy);
-                                        self.draw_line_on_img(t, cursor, nc, extent, *color);
-                                        cursor = nc;
-                                    }
-                                    _ => {
-                                        panic!("LineString geometry can only contain MoveTo or LineTo commands");
-                                    }
-                                }
+                            let mut lines: Vec<Vec<sp::Point<f32>>> = self
+                                .commands_to_polylines(&commands)
+                                .into_iter()
+                                .map(|line| {
+                                    line.into_iter()
+                                        .map(|p| self.tile_point_to_screen_space(t, p, extent))
+                                        .collect()
+                                })
+                                .collect();
+
+                            for i in 0..lines.len() {
+                                let before = lines[i].len();
+                                lines[i] = sp::simplify(&lines[i], self.tolerance, false);
+                                let after = lines[i].len();
+
+                                info!("Simplified from {} lines to {} lines", before, after);
                             }
+
+                            lines.iter().for_each(|line| {
+                                for i in 0..line.len() - 1 {
+                                    let p = (line[i].x.round() as i32, line[i].y.round() as i32);
+                                    let q = (
+                                        line[i + 1].x.round() as i32,
+                                        line[i + 1].y.round() as i32,
+                                    );
+                                    self.draw_line_on_img(t, p, q, extent, *color);
+                                }
+                            });
                         }
                         vector_tile::tile::GeomType::Polygon => {
+                            // let mut points = vec![sp::Point(0, 0)]
                             let mut polygon_start = (0, 0);
+                            let mut cursor = (0, 0);
                             for c in commands {
                                 match c {
                                     tile::GeometryCommand::MoveTo(dx, dy) => {
@@ -181,18 +205,18 @@ impl Renderer {
                                         if (nc.0 - cursor.0).abs() > 0
                                             && (nc.1 - cursor.1).abs() > 0
                                         {
-                                            self.draw_line_on_img(t, cursor, nc, extent, *color);
+                                            // self.draw_line_on_img(t, cursor, nc, extent, *color);
                                         }
                                         cursor = nc;
                                     }
                                     tile::GeometryCommand::ClosePath => {
-                                        self.draw_line_on_img(
-                                            t,
-                                            cursor,
-                                            polygon_start,
-                                            extent,
-                                            *color,
-                                        );
+                                        // self.draw_line_on_img(
+                                        //     t,
+                                        //     cursor,
+                                        //     polygon_start,
+                                        //     extent,
+                                        //     *color,
+                                        // );
                                         // unimplemented!("moveto");
                                     }
                                 }
@@ -217,6 +241,44 @@ impl Renderer {
         }
     }
 
+    // Each vec of points represents a polyline. There are potentially multiple polylines.
+    pub fn commands_to_polylines(&self, commands: &Vec<GeometryCommand>) -> Vec<Vec<(i32, i32)>> {
+        let mut lines = Vec::new();
+        let mut line = Vec::new();
+
+        let mut cursor = (0, 0);
+        for c in commands {
+            match c {
+                tile::GeometryCommand::MoveTo(dx, dy) => {
+                    cursor = (cursor.0 + dx, cursor.1 + dy);
+
+                    if !line.is_empty() {
+                        lines.push(line);
+                    }
+                    line = Vec::new();
+                }
+                tile::GeometryCommand::LineTo(dx, dy) => {
+                    let nc = (cursor.0 + dx, cursor.1 + dy);
+
+                    if line.is_empty() || line.last().unwrap() != &cursor {
+                        line.push(cursor);
+                    }
+                    line.push(nc);
+                    // self.draw_line_on_img(t, cursor, nc, extent, *color);
+                    cursor = nc;
+                }
+                _ => {
+                    panic!("LineString geometry can only contain MoveTo or LineTo commands");
+                }
+            }
+        }
+        if !line.is_empty() {
+            lines.push(line);
+        }
+
+        lines
+    }
+
     pub fn get_tile_features(&self, tile: &tile::Tile, zoom: f64) {
         let draw_order = Renderer::generate_draw_order(zoom);
         println!("draw order is {:?}", draw_order);
@@ -236,6 +298,19 @@ impl Renderer {
         });
     }
 
+    pub fn tile_point_to_screen_space(
+        &mut self,
+        t: &Tile,
+        p: (i32, i32),
+        extent: u32,
+    ) -> sp::Point<f32> {
+        let base_size = 256.;
+        sp::Point {
+            x: t.screenpos.0 as f32 + p.0 as f32 * base_size / extent as f32 * self.rel_zoom as f32,
+            y: t.screenpos.1 as f32 + p.1 as f32 * base_size / extent as f32 * self.rel_zoom as f32,
+        }
+    }
+
     pub fn draw_line_on_img(
         &mut self,
         t: &Tile,
@@ -244,38 +319,15 @@ impl Renderer {
         extent: u32,
         color: Rgb<u8>,
     ) {
-        let base_size = 256.;
+        // let base_size = 256.;
 
-        let from = (
-            t.screenpos.0 as f32 + p.0 as f32 * base_size / extent as f32 * self.rel_zoom as f32,
-            t.screenpos.1 as f32 + p.1 as f32 * base_size / extent as f32 * self.rel_zoom as f32,
-        );
+        // let from = self.tile_point_to_screen_space(t, p, extent);
+        // let to = self.tile_point_to_screen_space(t, q, extent);
 
-        let to = (
-            t.screenpos.0 as f32 + q.0 as f32 * base_size / extent as f32 * self.rel_zoom as f32,
-            t.screenpos.1 as f32 + q.1 as f32 * base_size / extent as f32 * self.rel_zoom as f32,
-        );
-
-        // let from = (
-        //     ((256 * t.row.unwrap_or_default()) as f32 + p.0 as f32 * (256. / extent as f32))
-        //         * self.rel_zoom as f32,
-        //     ((256 * t.col.unwrap_or_default()) as f32 + p.1 as f32 * (256. / extent as f32))
-        //         * self.rel_zoom as f32,
-        // );
-        // let to = (
-        //     ((256 * t.row.unwrap_or_default()) as f32 + q.0 as f32 * (256. / extent as f32))
-        //         * self.rel_zoom as f32,
-        //     ((256 * t.col.unwrap_or_default()) as f32 + q.1 as f32 * (256. / extent as f32))
-        //         * self.rel_zoom as f32,
-        // );
-
-        if self.point_within_bounds(from) && self.point_within_bounds(to) {
-            imageproc::drawing::draw_line_segment_mut(
-                &mut self.img,
-                from,
-                to,
-                color, // Rgb([0u8, 0u8, 0u8]), // RGB colors
-            );
+        let fp = (p.0 as f32, p.1 as f32);
+        let fq = (q.0 as f32, q.1 as f32);
+        if self.point_within_bounds(p) && self.point_within_bounds(q) {
+            imageproc::drawing::draw_line_segment_mut(&mut self.img, fp, fq, color);
         }
     }
 
@@ -302,9 +354,8 @@ impl Renderer {
     //     (px, py)
     // }
 
-    pub fn point_within_bounds(&self, p: (f32, f32)) -> bool {
-        let x = p.0.round() as i32;
-        let y = p.1.round() as i32;
+    pub fn point_within_bounds(&self, p: (i32, i32)) -> bool {
+        let (x, y) = p;
         0 <= x && x < self.width as i32 && 0 <= y && y < self.height as i32
     }
 
@@ -332,7 +383,7 @@ impl Renderer {
         features.into_iter().map(|s| s.to_string()).collect()
     }
 
-    pub fn visible_tiles(&self) -> Vec<tile::Tile> {
+    pub fn visible_tiles(&mut self) -> Vec<tile::Tile> {
         let center = util::coords_to_tile(&self.center, self.zoom as f64);
 
         let tile_screen_size = 256.0 * self.rel_zoom;
@@ -380,13 +431,13 @@ impl Renderer {
                     ..Default::default()
                 };
 
-                let top_l = (t.screenpos.0 as f32, t.screenpos.1 as f32);
+                let top_l = t.screenpos;
                 if [(0, 0), (0, 1), (1, 0), (1, 1)]
                     .into_iter()
                     .map(|(i, j)| {
                         (
-                            top_l.0 + i as f32 * tile_screen_size as f32,
-                            top_l.1 + j as f32 * tile_screen_size as f32,
+                            top_l.0 + i * tile_screen_size.round() as i32,
+                            top_l.1 + j * tile_screen_size.round() as i32,
                         )
                     })
                     .any(|p| self.point_within_bounds(p))
@@ -395,6 +446,17 @@ impl Renderer {
                 }
             }
         }
+
+        tiles.iter_mut().for_each(|ref mut t| {
+            match self.tilesource.get_tile(t.z(), t.x(), t.y()) {
+                Ok(tile) => {
+                    t.vtile = tile.vtile;
+                }
+                Err(e) => {
+                    error!("Could not get vector tile: {}", e);
+                }
+            }
+        });
 
         tiles
     }

@@ -85,7 +85,14 @@ fn main() {
 
     let window = initscr();
     loop {
+
+        window.printw(format!("Center: {:?}\n", renderer.center));
         window.printw(format!("Zoom: {}\n", renderer.zoom));
+        window.printw(format!("Tolerance: {:.2}\n", renderer.tolerance));
+        window.printw(format!(
+            "High Quality Simplification: {}\n",
+            renderer.high_quality
+        ));
         renderer.draw();
 
         match window.getch() {
@@ -94,6 +101,21 @@ fn main() {
             }
             Some(Input::Character('z')) => {
                 renderer.zoom_out();
+            }
+            Some(Input::Character('+')) => {
+                renderer.tolerance *= 1.5;
+            }
+            Some(Input::Character('-')) => {
+                renderer.tolerance /= 1.5;
+            }
+            Some(Input::Character('g')) => {
+                renderer.high_quality = !renderer.high_quality;
+            }
+            Some(Input::Character('l')) => {
+                renderer.pan_right();
+            }
+            Some(Input::Character('h')) => {
+                renderer.pan_left();
             }
             Some(Input::Character('q')) => {
                 endwin();
