@@ -393,18 +393,30 @@ impl Renderer {
                 };
 
                 let top_l = t.screenpos;
-                if [(0, 0), (0, 1), (1, 0), (1, 1)]
-                    .into_iter()
-                    .map(|(i, j)| {
-                        (
-                            top_l.0 + i * tile_screen_size.round() as i32,
-                            top_l.1 + j * tile_screen_size.round() as i32,
-                        )
-                    })
-                    .any(|p| self.point_within_bounds(p))
-                {
+                let bot_r = (
+                    top_l.0 + tile_screen_size.round() as i32,
+                    top_l.1 + tile_screen_size.round() as i32,
+                );
+
+                if Renderer::rectangles_intersect(
+                    (top_l, bot_r),
+                    ((0, 0), (self.width as i32, self.height as i32)),
+                ) {
                     tiles.push(t);
                 }
+
+                // if [(0, 0), (0, 1), (1, 0), (1, 1)]
+                //     .into_iter()
+                //     .map(|(i, j)| {
+                //         (
+                //             top_l.0 + i * tile_screen_size.round() as i32,
+                //             top_l.1 +
+                //         )
+                //     })
+                //     .any(|p| self.point_within_bounds(p))
+                // {
+                //     tiles.push(t);
+                // }
             }
         }
 
@@ -420,6 +432,10 @@ impl Renderer {
         });
 
         tiles
+    }
+
+    fn rectangles_intersect(r1: ((i32, i32), (i32, i32)), r2: ((i32, i32), (i32, i32))) -> bool {
+        (r1.0 .0 < r2.1 .0) && (r1.1 .0 > r2.0 .0) && (r1.0 .1 < r2.1 .1) && (r1.1 .1 > r2.0 .1)
     }
 }
 
