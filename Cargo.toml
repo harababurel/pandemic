@@ -10,6 +10,7 @@ edition = "2021"
 # macroquad = "0.3"
 # miniquad = "0.3.15"
 braille = "1.0"
+bresenham = "0.1.1"
 clap = { version = "4.1", features = ["derive"] }
 colored = "2"
 drawille = "0.3.0"

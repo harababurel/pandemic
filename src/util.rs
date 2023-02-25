@@ -30,6 +30,10 @@ impl TileCoords {
     }
 }
 
+pub fn rectangles_intersect(r1: ((i32, i32), (i32, i32)), r2: ((i32, i32), (i32, i32))) -> bool {
+    (r1.0 .0 < r2.1 .0) && (r1.1 .0 > r2.0 .0) && (r1.0 .1 < r2.1 .1) && (r1.1 .1 > r2.0 .1)
+}
+
 pub fn coords_to_tile(c: &Coords, zoom: f64) -> TileCoords {
     let lat_rad = c.lat.to_radians();
     let n = 2f64.powf(zoom);

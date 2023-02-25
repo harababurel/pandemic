@@ -76,7 +76,7 @@ fn main() {
     let center = pandemic::util::Coords::from_deg(args.lat, args.lon);
 
     // let mut renderer = pandemic::renderer::Renderer::new((281*3, 69*5), center);
-    let mut renderer = pandemic::renderer::BrailleRenderer::new((1280, 720), center);
+    let mut renderer = pandemic::renderer::BrailleRenderer::new((540, 400), center);
 
     let window = initscr();
     loop {
@@ -91,6 +91,9 @@ fn main() {
             ));
         }
         renderer.draw();
+        for line in renderer.to_braille() {
+            window.printw(format!("{}\n", line));
+        }
 
         match window.getch() {
             Some(Input::Character('a')) => {
