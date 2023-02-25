@@ -76,7 +76,7 @@ fn main() {
     let center = pandemic::util::Coords::from_deg(args.lat, args.lon);
 
     // let mut renderer = pandemic::renderer::Renderer::new((281*3, 69*5), center);
-    let mut renderer = pandemic::renderer::ImageRenderer::new((1280, 720), center);
+    let mut renderer = pandemic::renderer::BrailleRenderer::new((1280, 720), center);
 
     let window = initscr();
     loop {
