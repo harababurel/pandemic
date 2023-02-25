@@ -9,6 +9,7 @@ use clap::Parser;
 use pancurses;
 use pancurses::{endwin, initscr, Input};
 use pandemic;
+use pandemic::renderer::Renderer;
 use prost::Message;
 use reqwest;
 use std::collections::HashMap;
@@ -75,7 +76,7 @@ fn main() {
     let center = pandemic::util::Coords::from_deg(args.lat, args.lon);
 
     // let mut renderer = pandemic::renderer::Renderer::new((281*3, 69*5), center);
-    let mut renderer = pandemic::renderer::Renderer::new((1280, 720), center);
+    let mut renderer = pandemic::renderer::ImageRenderer::new((1280, 720), center);
 
     let window = initscr();
     loop {
@@ -111,16 +112,16 @@ fn main() {
                 renderer.simplify = !renderer.simplify;
             }
             Some(Input::Character('l')) => {
-                renderer.pan_right();
+                renderer.pan(pandemic::renderer::Direction::RIGHT);
             }
             Some(Input::Character('h')) => {
-                renderer.pan_left();
+                renderer.pan(pandemic::renderer::Direction::LEFT);
             }
             Some(Input::Character('j')) => {
-                renderer.pan_down();
+                renderer.pan(pandemic::renderer::Direction::DOWN);
             }
             Some(Input::Character('k')) => {
-                renderer.pan_up();
+                renderer.pan(pandemic::renderer::Direction::UP);
             }
             Some(Input::Character('q')) => {
                 endwin();

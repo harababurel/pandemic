@@ -21,7 +21,7 @@ macro_rules! hashmap {
     }}
 }
 
-pub struct Renderer {
+pub struct ImageRenderer {
     width: usize,
     height: usize,
     pub center: Coords,
@@ -34,56 +34,62 @@ pub struct Renderer {
     pub high_quality: bool,
 }
 
-impl Renderer {
-    pub fn new(res: (usize, usize), center: Coords) -> Self {
-        Renderer {
-            width: res.0,
-            height: res.1,
-            center,
-            zoom: 0,
-            tilesource: Box::new(CachedTileSource::unbounded(TileServerSource::new())),
-            img: ImageBuffer::new(res.0 as u32, res.1 as u32),
-            rel_zoom: 3.,
-            simplify: false,
-            tolerance: 1.,
-            high_quality: false,
-        }
-    }
+pub enum Direction {
+    UP = 0,
+    DOWN,
+    LEFT,
+    RIGHT,
+}
 
-    pub fn zoom_in(&mut self) {
+pub trait Renderer {
+    // fn width(&self) -> i32;
+    // fn height(&self) -> i32;
+
+    fn zoom_in(&mut self);
+    fn zoom_out(&mut self);
+    fn pan(&mut self, d: Direction);
+
+    fn clear_buf(&mut self);
+
+    fn draw(&mut self);
+    fn draw_line(&mut self, t: &Tile, p: (i32, i32), q: (i32, i32), extent: u32, color: Rgb<u8>);
+    fn visible_tiles(&mut self) -> Vec<tile::Tile>;
+}
+
+impl Renderer for ImageRenderer {
+    fn zoom_in(&mut self) {
         self.zoom = std::cmp::min(self.zoom + 1, MAX_ZOOM);
     }
-
-    pub fn zoom_out(&mut self) {
+    fn zoom_out(&mut self) {
         if self.zoom > std::cmp::max(0, MIN_ZOOM) {
             self.zoom -= 1;
         }
     }
-
-    pub fn pan_right(&mut self) {
-        self.center.lon += 10.;
+    fn pan(&mut self, d: Direction) {
+        match d {
+            Direction::RIGHT => {
+                self.center.lon += 10.;
+            }
+            Direction::LEFT => {
+                self.center.lon -= 10.;
+            }
+            Direction::UP => {
+                self.center.lat = (self.center.lat + 10.).min(80.);
+            }
+            Direction::DOWN => {
+                self.center.lat = (self.center.lat - 10.).max(-80.);
+            }
+        };
     }
 
-    pub fn pan_left(&mut self) {
-        self.center.lon -= 10.;
-    }
-
-    pub fn pan_up(&mut self) {
-        self.center.lat = (self.center.lat + 10.).min(80.);
-    }
-
-    pub fn pan_down(&mut self) {
-        self.center.lat = (self.center.lat - 10.).max(-80.);
-    }
-
-    pub fn clear_img(&mut self) {
+    fn clear_buf(&mut self) {
         for (_, _, pixel) in self.img.enumerate_pixels_mut() {
             *pixel = image::Rgb([255, 255, 255]);
         }
     }
 
-    pub fn draw(&mut self) {
-        self.clear_img();
+    fn draw(&mut self) {
+        self.clear_buf();
 
         let mut tiles: Vec<tile::Tile> = self.visible_tiles();
         info!("There are {} visible tiles", tiles.len());
@@ -99,6 +105,110 @@ impl Renderer {
         }
         self.img.save("test.png").unwrap();
     }
+    fn draw_line(&mut self, t: &Tile, p: (i32, i32), q: (i32, i32), extent: u32, color: Rgb<u8>) {
+        let fp = (p.0 as f32, p.1 as f32);
+        let fq = (q.0 as f32, q.1 as f32);
+        if self.point_within_bounds(p)
+            && self.point_within_bounds(q)
+            && (self.point_within_tile_bounds(t, p) || self.point_within_tile_bounds(t, q))
+        {
+            imageproc::drawing::draw_line_segment_mut(&mut self.img, fp, fq, color);
+        }
+    }
+    fn visible_tiles(&mut self) -> Vec<tile::Tile> {
+        let center = util::coords_to_tile(&self.center, self.zoom as f64);
+
+        let tile_screen_size = 256.0 * self.rel_zoom;
+        let lon = self.center.lon;
+        let lat = self.center.lat;
+
+        // center tile
+        let mut ct = tile::Tile {
+            zxy: (self.zoom as usize, center.x as i32, center.y as i32),
+            ..Default::default()
+        };
+
+        let dx = (lon - ct.bounds().w) / (ct.bounds().e - ct.bounds().w);
+        let dy = ((1. - ((lat * PI / 180.).tan() + 1. / (lat * PI / 180.).cos()).ln() / PI) / 2.
+            * 2f64.powf(self.zoom as f64))
+        .fract();
+        ct.screenpos = (
+            (self.width as f64 / 2. - tile_screen_size * dx).round() as i32,
+            (self.height as f64 / 2. - tile_screen_size * dy).round() as i32,
+        );
+
+        let hcnt = 1 + (self.width as f64 / tile_screen_size).ceil() as i32;
+        let vcnt = 1 + (self.height as f64 / tile_screen_size).ceil() as i32;
+        info!("dx = {:.2}, dy = {:.2}", dx, dy);
+        info!("hcnt = {}, vcnt = {}", hcnt, vcnt);
+
+        let modulo = 2i32.pow(self.zoom);
+
+        let mut tiles: Vec<tile::Tile> = Vec::new();
+        for i in -vcnt..vcnt + 1 {
+            for j in -hcnt..hcnt + 1 {
+                let mut x = (j + center.x as i32) % modulo;
+                let mut y = (i + center.y as i32) % modulo;
+
+                let mut t = tile::Tile {
+                    zxy: (self.zoom as usize, x, y),
+                    screenpos: (
+                        (self.width as f64 / 2. - tile_screen_size * dx
+                            + j as f64 * tile_screen_size)
+                            .round() as i32,
+                        (self.height as f64 / 2. - tile_screen_size * dy
+                            + i as f64 * tile_screen_size)
+                            .round() as i32,
+                    ),
+                    ..Default::default()
+                };
+
+                let top_l = t.screenpos;
+                let bot_r = (
+                    top_l.0 + tile_screen_size.round() as i32,
+                    top_l.1 + tile_screen_size.round() as i32,
+                );
+
+                if ImageRenderer::rectangles_intersect(
+                    (top_l, bot_r),
+                    ((0, 0), (self.width as i32, self.height as i32)),
+                ) {
+                    tiles.push(t);
+                }
+            }
+        }
+
+        tiles.iter_mut().for_each(|ref mut t| {
+            match self.tilesource.get_tile(t.z(), t.x(), t.y()) {
+                Ok(tile) => {
+                    t.vtile = tile.vtile;
+                }
+                Err(e) => {
+                    error!("Could not get vector tile: {}", e);
+                }
+            }
+        });
+
+        tiles
+    }
+}
+
+impl ImageRenderer {
+    pub fn new(res: (usize, usize), center: Coords) -> Self {
+        ImageRenderer {
+            width: res.0,
+            height: res.1,
+            center,
+            zoom: 0,
+            tilesource: Box::new(CachedTileSource::unbounded(TileServerSource::new())),
+            img: ImageBuffer::new(res.0 as u32, res.1 as u32),
+            rel_zoom: 10.,
+            simplify: false,
+            tolerance: 1.,
+            high_quality: false,
+        }
+    }
+
     pub fn draw_tile(&mut self, t: &tile::Tile) {
         info!("bounding box: {:?}", t.bounds());
         let layer_colors = hashmap! {
@@ -197,7 +307,7 @@ impl Renderer {
                                 line.iter().zip(line.iter().skip(1)).for_each(|(p, q)| {
                                     let p = (p.x.round() as i32, p.y.round() as i32);
                                     let q = (q.x.round() as i32, q.y.round() as i32);
-                                    self.draw_line_on_img(t, p, q, extent, *color);
+                                    self.draw_line(t, p, q, extent, *color);
                                 });
                             });
                         }
@@ -257,7 +367,7 @@ impl Renderer {
     }
 
     pub fn get_tile_features(&self, tile: &tile::Tile, zoom: f64) {
-        let draw_order = Renderer::generate_draw_order(zoom);
+        let draw_order = ImageRenderer::generate_draw_order(zoom);
         println!("draw order is {:?}", draw_order);
 
         let vtile = tile.vtile.as_ref().unwrap();
@@ -285,24 +395,6 @@ impl Renderer {
         sp::Point {
             x: t.screenpos.0 as f32 + p.0 as f32 * base_size / extent as f32 * self.rel_zoom as f32,
             y: t.screenpos.1 as f32 + p.1 as f32 * base_size / extent as f32 * self.rel_zoom as f32,
-        }
-    }
-
-    pub fn draw_line_on_img(
-        &mut self,
-        t: &Tile,
-        p: (i32, i32),
-        q: (i32, i32),
-        extent: u32,
-        color: Rgb<u8>,
-    ) {
-        let fp = (p.0 as f32, p.1 as f32);
-        let fq = (q.0 as f32, q.1 as f32);
-        if self.point_within_bounds(p)
-            && self.point_within_bounds(q)
-            && (self.point_within_tile_bounds(t, p) || self.point_within_tile_bounds(t, q))
-        {
-            imageproc::drawing::draw_line_segment_mut(&mut self.img, fp, fq, color);
         }
     }
 
@@ -344,96 +436,6 @@ impl Renderer {
         features.into_iter().map(|s| s.to_string()).collect()
     }
 
-    pub fn visible_tiles(&mut self) -> Vec<tile::Tile> {
-        let center = util::coords_to_tile(&self.center, self.zoom as f64);
-
-        let tile_screen_size = 256.0 * self.rel_zoom;
-        let lon = self.center.lon;
-        let lat = self.center.lat;
-
-        // center tile
-        let mut ct = tile::Tile {
-            zxy: (self.zoom as usize, center.x as i32, center.y as i32),
-            ..Default::default()
-        };
-
-        let dx = (lon - ct.bounds().w) / (ct.bounds().e - ct.bounds().w);
-        let dy = ((1. - ((lat * PI / 180.).tan() + 1. / (lat * PI / 180.).cos()).ln() / PI) / 2.
-            * 2f64.powf(self.zoom as f64))
-        .fract();
-        ct.screenpos = (
-            (self.width as f64 / 2. - tile_screen_size * dx).round() as i32,
-            (self.height as f64 / 2. - tile_screen_size * dy).round() as i32,
-        );
-
-        let hcnt = 1 + (self.width as f64 / tile_screen_size).ceil() as i32;
-        let vcnt = 1 + (self.height as f64 / tile_screen_size).ceil() as i32;
-        info!("dx = {:.2}, dy = {:.2}", dx, dy);
-        info!("hcnt = {}, vcnt = {}", hcnt, vcnt);
-
-        let modulo = 2i32.pow(self.zoom);
-
-        let mut tiles: Vec<tile::Tile> = Vec::new();
-        for i in -vcnt..vcnt + 1 {
-            for j in -hcnt..hcnt + 1 {
-                let mut x = (j + center.x as i32) % modulo;
-                let mut y = (i + center.y as i32) % modulo;
-
-                let mut t = tile::Tile {
-                    zxy: (self.zoom as usize, x, y),
-                    screenpos: (
-                        (self.width as f64 / 2. - tile_screen_size * dx
-                            + j as f64 * tile_screen_size)
-                            .round() as i32,
-                        (self.height as f64 / 2. - tile_screen_size * dy
-                            + i as f64 * tile_screen_size)
-                            .round() as i32,
-                    ),
-                    ..Default::default()
-                };
-
-                let top_l = t.screenpos;
-                let bot_r = (
-                    top_l.0 + tile_screen_size.round() as i32,
-                    top_l.1 + tile_screen_size.round() as i32,
-                );
-
-                if Renderer::rectangles_intersect(
-                    (top_l, bot_r),
-                    ((0, 0), (self.width as i32, self.height as i32)),
-                ) {
-                    tiles.push(t);
-                }
-
-                // if [(0, 0), (0, 1), (1, 0), (1, 1)]
-                //     .into_iter()
-                //     .map(|(i, j)| {
-                //         (
-                //             top_l.0 + i * tile_screen_size.round() as i32,
-                //             top_l.1 +
-                //         )
-                //     })
-                //     .any(|p| self.point_within_bounds(p))
-                // {
-                //     tiles.push(t);
-                // }
-            }
-        }
-
-        tiles.iter_mut().for_each(|ref mut t| {
-            match self.tilesource.get_tile(t.z(), t.x(), t.y()) {
-                Ok(tile) => {
-                    t.vtile = tile.vtile;
-                }
-                Err(e) => {
-                    error!("Could not get vector tile: {}", e);
-                }
-            }
-        });
-
-        tiles
-    }
-
     fn rectangles_intersect(r1: ((i32, i32), (i32, i32)), r2: ((i32, i32), (i32, i32))) -> bool {
         (r1.0 .0 < r2.1 .0) && (r1.1 .0 > r2.0 .0) && (r1.0 .1 < r2.1 .1) && (r1.1 .1 > r2.0 .1)
     }
@@ -446,7 +448,7 @@ mod tests {
     #[test]
     fn test_screen_pos() {
 
-        // let r = Renderer::new((1920,1080),
+        // let r = ImageRenderer::new((1920,1080),
         // for t in tests {
         //     let (ci, expected) = t;
         //     assert_eq!(Tile::parse_command_integer(ci), expected);
